@@ -1,7 +1,7 @@
 import sys, random, json
 from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QUrl, QRect
-from PySide6.QtGui import QPainter, QColor, QFont, QPixmap
+from PySide6.QtGui import QPainter, QColor, QFont, QPixmap, QFontDatabase
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QLabel, QVBoxLayout, QPushButton, QDialog, QFormLayout, QLineEdit, QMessageBox, QListWidget
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -46,6 +46,7 @@ class MenuWidget(QWidget):
 
     def init_ui(self):
         self.setFixedSize(WINDOW_W, WINDOW_H)
+        self.setStyleSheet("background: black;")
         layout = QVBoxLayout()
         layout.setContentsMargins(0,0,0,0)
         fondo = QLabel()
@@ -59,17 +60,26 @@ class MenuWidget(QWidget):
         v.setContentsMargins(220, 130, 220, 130)
         v.setSpacing(18)
 
+        font_id = QFontDatabase.addApplicationFont(f"{ASSETS}/arcadeclassic.regular.ttf")
+        font_families = QFontDatabase.applicationFontFamilies(font_id)
+        pixel_font_family = font_families[0]
+        pixel_font = QFont(pixel_font_family)
+        pixel_font.setPixelSize(24)
         titulo = QLabel("PIXEL KONG")
+        titulo.setFont(pixel_font)
         titulo.setAlignment(Qt.AlignCenter)
         titulo.setStyleSheet("color: white; font-size: 44px; font-weight: bold;")
         v.addWidget(titulo)
 
         btn_jugar = QPushButton("JUGAR")
+        btn_jugar.setFont(pixel_font)
         btn_records = QPushButton("RECORDS")
+        btn_records.setFont(pixel_font)
         btn_salir = QPushButton("SALIR")
+        btn_salir.setFont(pixel_font)
         for b in (btn_jugar, btn_records, btn_salir):
             b.setFixedHeight(54)
-            b.setStyleSheet("background: black; font-size: 16px;")
+            b.setStyleSheet("background: black; font-size: 16px; color:white;")
             v.addWidget(b)
 
         btn_jugar.clicked.connect(self.abrir_fachada)
