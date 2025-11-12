@@ -29,7 +29,7 @@ class JuegoWidget(QWidget):
         self.j_w, self.j_h = 40, 44
         self.jx, self.jy = 80.0, 460.0
         self.jvx, self.jvy = 0.0, 0.0
-        self.salto_vel = -12.0
+        self.salto_vel = -8.0
         self.gravedad = 0.7
         self.en_trepada = False
 
@@ -63,7 +63,7 @@ class JuegoWidget(QWidget):
         # --- timers adicionales ---
         self.spawn_timer = QTimer(self)
         self.spawn_timer.timeout.connect(self.generar_obstaculo)
-        self.spawn_timer.start(1200)
+        self.spawn_timer.start(3000)
 
         self.power_timer = QTimer(self)
         self.power_timer.timeout.connect(self.generar_powerup)
@@ -90,21 +90,21 @@ class JuegoWidget(QWidget):
     def construir_nivel(self):
             # Ejemplo simple: plataformas y escaleras
         self.plataformas = [
-            QRect(0, 500, 960, 20),
-            QRect(100, 400, 760, 20),
-            QRect(0, 300, 960, 20),
-            QRect(100, 200, 760, 20),
+            QRect(0, 500, 960, 20), #abajo
+            QRect(0, 400, 760, 20), #enmedio abajo
+            QRect(100, 300, 960, 20), #enmedio arriba
+            QRect(0, 200, 760, 20), #arriba
         ]
         self.escaleras = [
-            QRect(150, 400, 40, 100),
-            QRect(800, 300, 40, 100),
+            QRect(150, 400, 40, 100), #abajo
+            QRect(700, 300, 40, 100), #arriba
             ]
 
     def generar_obstaculo(self):
         # Barriles, cáscaras o bombas
         tipo = random.choice(["barril", "cascara", "bomba"])
         x = 0 if tipo == "barril" else random.randint(0, 900)
-        y = 470  # nivel inferior
+        y = 170  # nivel superior
         self.obstaculos.append({"tipo": tipo, "x": x, "y": y, "vx": random.choice([2, 3])})
 
     def generar_powerup(self):
