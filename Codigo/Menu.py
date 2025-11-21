@@ -1,7 +1,7 @@
 from PySide6.QtCore import Qt, QUrl, QThread, QObject, Signal
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton, QDialog, \
-    QFormLayout, QLineEdit, QMessageBox, QListWidget, QThread, QObject, Signal, QHBoxLayout
+    QFormLayout, QLineEdit, QMessageBox, QListWidget, QHBoxLayout
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H, RECORDS_FILE
 import socket
@@ -143,25 +143,13 @@ class MenuWidget(QWidget):
         self.iniciar_hilo_servidor()
         dlg.exec()
 
-    def abrir_fachada_servidor(self):
-        dlg = QDialog(self)
-        dlg.setStyleSheet("color: white;")
-        dlg.setWindowTitle("Crear sala (fachada)")
-        dlg.setFixedSize(360,220)
-
-        form = QFormLayout(dlg)
-        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
-        lbl_ip = QLabel()
-        lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
-        self.lbl_cliente = QLabel("Esperando conexion...")
-        btn = QPushButton("INICIAR (simulado)")
-        btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text()))
-        form.addRow("Tu nombre:", txt_nombre)
-        form.addRow("IP (fachada):", lbl_ip)
-        form.addRow(self.lbl_cliente)
-        form.addRow(btn)
-        self.iniciar_hilo_servidor()
-        dlg.exec()
+    def iniciar_hilo_servidor(self):
+        self.conexion_s = Conexion()
+        self.conexion_s.moveToThread(self.hilo)
+        self.hilo.started.connect(self.conexion_s.iniciar_servidor)
+        self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
+        self.conexion_s.cliente_conectado.connect(self.closeEvent)
+        self.hilo.start()
 
     def cambiar_lbl(self):
         self.lbl_cliente.setText("Conexion exitosa")
@@ -182,13 +170,13 @@ class MenuWidget(QWidget):
         form.addRow(btn)
         dlg.exec()
 
-        def iniciar_hilo_cliente(self, ip):
-            self.conexion_c = Conexion()
-            self.conexion_c.moveToThread(self.hilo)
-            self.hilo.started.connect(lambda: self.conexion_c.iniciar_cliente(ip))
-            self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
-            self.conexion_c.cliente_conectado.connect(self.closeEvent)
-            self.hilo.start()
+    def iniciar_hilo_cliente(self, ip):
+        self.conexion_c = Conexion()
+        self.conexion_c.moveToThread(self.hilo)
+        self.hilo.started.connect(lambda: self.conexion_c.iniciar_cliente(ip))
+        self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
+        self.conexion_c.cliente_conectado.connect(self.closeEvent)
+        self.hilo.start()
 
     def _iniciar(self, dlg, nombre, rival):
         if not nombre:
