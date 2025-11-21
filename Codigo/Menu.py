@@ -1,9 +1,39 @@
-from PySide6.QtCore import Qt, QUrl
+from PySide6.QtCore import Qt, QUrl, QThread, QObject, Signal
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton, QDialog, \
-    QFormLayout, QLineEdit, QMessageBox, QListWidget
+    QFormLayout, QLineEdit, QMessageBox, QListWidget, QThread, QObject, Signal, QHBoxLayout
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H, RECORDS_FILE
+import socket
+
+class Conexion(QObject):
+    cliente_conectado = Signal(str)
+    def __init__(self):
+        super().__init__()
+
+    def iniciar_servidor(self):
+        try:
+            s = socket.socket()
+            s.bind(("", 5050))
+            s.listen(1)
+            conn, addr = s.accept()
+            conn.sendall(b"Conexion exitosa con el HOST")
+            conn.close()
+            s.close()
+            self.cliente_conectado.emit("cliente conectado")
+        except:
+            pass
+
+    def iniciar_cliente(self, ip):
+        try:
+            s = socket.socket()
+            s.connect((ip, 5050))
+            msg = s.recv(1024).decode()
+            s.close()
+            self.cliente_conectado.emit("cliente conectado")
+            print("Conexion")
+        except:
+            print("No conexion")
 
 class MenuWidget(QWidget):
     def __init__(self, app_window):
@@ -11,6 +41,7 @@ class MenuWidget(QWidget):
         self.app_window = app_window
         self.init_ui()
         self.init_audio()
+        self.hilo = QThread()
 
     def init_ui(self):
         self.setFixedSize(WINDOW_W, WINDOW_H)
@@ -50,7 +81,7 @@ class MenuWidget(QWidget):
             b.setStyleSheet("background: black; font-size: 16px; color:white;")
             v.addWidget(b)
 
-        btn_jugar.clicked.connect(self.abrir_fachada)
+        btn_jugar.clicked.connect(self.elegir_s_c)
         btn_records.clicked.connect(self.abrir_records)
         btn_salir.clicked.connect(lambda: QApplication.quit())
 
@@ -69,22 +100,95 @@ class MenuWidget(QWidget):
         else:
             self.player = None
 
-    def abrir_fachada(self):
+    def elegir_s_c(self):
+        dlg = QDialog(self)
+        dlg.setStyleSheet("color: white;")
+        dlg.setWindowTitle("Servidor o cliente")
+        dlg.setFixedSize(360,180)
+        cbv = QVBoxLayout(dlg)
+        cbh = QHBoxLayout()
+        txt_pregunta = QLabel("Vas a ser el Servidor o el cliente?")
+
+        btn_servidor = QPushButton("Servidor")
+        btn_servidor.clicked.connect(self.abrir_fachada_servidor)
+        btn_servidor.clicked.connect(dlg.accept)
+
+        btn_cliente = QPushButton("Cliente")
+        btn_cliente.clicked.connect(self.abrir_fachada_cliente)
+        btn_cliente.clicked.connect(dlg.accept)
+
+        cbv.addWidget(txt_pregunta)
+        cbh.addWidget(btn_servidor)
+        cbh.addWidget(btn_cliente)
+        cbv.addLayout(cbh)
+        dlg.exec()
+
+    def abrir_fachada_servidor(self):
+        dlg = QDialog(self)
+        dlg.setStyleSheet("color: white;")
+        dlg.setWindowTitle("Crear sala (fachada)")
+        dlg.setFixedSize(360,220)
+
+        form = QFormLayout(dlg)
+        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
+        lbl_ip = QLabel()
+        lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
+        self.lbl_cliente = QLabel("Esperando conexion...")
+        btn = QPushButton("INICIAR (simulado)")
+        btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text()))
+        form.addRow("Tu nombre:", txt_nombre)
+        form.addRow("IP (fachada):", lbl_ip)
+        form.addRow(self.lbl_cliente)
+        form.addRow(btn)
+        self.iniciar_hilo_servidor()
+        dlg.exec()
+
+    def abrir_fachada_servidor(self):
+        dlg = QDialog(self)
+        dlg.setStyleSheet("color: white;")
+        dlg.setWindowTitle("Crear sala (fachada)")
+        dlg.setFixedSize(360,220)
+
+        form = QFormLayout(dlg)
+        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
+        lbl_ip = QLabel()
+        lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
+        self.lbl_cliente = QLabel("Esperando conexion...")
+        btn = QPushButton("INICIAR (simulado)")
+        btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text()))
+        form.addRow("Tu nombre:", txt_nombre)
+        form.addRow("IP (fachada):", lbl_ip)
+        form.addRow(self.lbl_cliente)
+        form.addRow(btn)
+        self.iniciar_hilo_servidor()
+        dlg.exec()
+
+    def cambiar_lbl(self):
+        self.lbl_cliente.setText("Conexion exitosa")
+
+    def abrir_fachada_cliente(self):
         dlg = QDialog(self)
         dlg.setStyleSheet("color: white;")
         dlg.setWindowTitle("Crear/Unirse a sala (fachada)")
         dlg.setFixedSize(360,220)
         form = QFormLayout(dlg)
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
-        txt_rival = QLineEdit(); txt_rival.setPlaceholderText("Nombre rival (simulado)")
         txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (fachada)")
         btn = QPushButton("INICIAR (simulado)")
-        btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text(), txt_rival.text()))
+        #btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text()))
+        btn.clicked.connect(lambda: self.iniciar_hilo_cliente(txt_ip.text()))
         form.addRow("Tu nombre:", txt_nombre)
-        form.addRow("Rival (simulado):", txt_rival)
         form.addRow("IP (fachada):", txt_ip)
         form.addRow(btn)
         dlg.exec()
+
+        def iniciar_hilo_cliente(self, ip):
+            self.conexion_c = Conexion()
+            self.conexion_c.moveToThread(self.hilo)
+            self.hilo.started.connect(lambda: self.conexion_c.iniciar_cliente(ip))
+            self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
+            self.conexion_c.cliente_conectado.connect(self.closeEvent)
+            self.hilo.start()
 
     def _iniciar(self, dlg, nombre, rival):
         if not nombre:
@@ -111,3 +215,7 @@ class MenuWidget(QWidget):
         v.addWidget(lista)
         btn = QPushButton("Cerrar"); btn.clicked.connect(dlg.accept); v.addWidget(btn)
         dlg.exec()
+
+    def closeEvent(self, event):
+        self.hilo.quit()
+        self.hilo.wait()
