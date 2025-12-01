@@ -1,39 +1,11 @@
-from PySide6.QtCore import Qt, QUrl, QThread, QObject, Signal
+from PySide6.QtCore import Qt, QUrl, QThread
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton, QDialog, \
     QFormLayout, QLineEdit, QMessageBox, QListWidget, QHBoxLayout
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H, RECORDS_FILE
 import socket
-
-class Conexion(QObject):
-    cliente_conectado = Signal(str)
-    def __init__(self):
-        super().__init__()
-
-    def iniciar_servidor(self):
-        try:
-            s = socket.socket()
-            s.bind(("", 5050))
-            s.listen(1)
-            conn, addr = s.accept()
-            conn.sendall(b"Conexion exitosa con el HOST")
-            conn.close()
-            s.close()
-            self.cliente_conectado.emit("cliente conectado")
-        except:
-            pass
-
-    def iniciar_cliente(self, ip):
-        try:
-            s = socket.socket()
-            s.connect((ip, 5050))
-            msg = s.recv(1024).decode()
-            s.close()
-            self.cliente_conectado.emit("cliente conectado")
-            print("Conexion")
-        except:
-            print("No conexion")
+from Workers import Conexion_serv, Conexion_clien
 
 class MenuWidget(QWidget):
     def __init__(self, app_window):
@@ -41,7 +13,8 @@ class MenuWidget(QWidget):
         self.app_window = app_window
         self.init_ui()
         self.init_audio()
-        self.hilo = QThread()
+        self.hilo_servidor = None
+        self.lbl_cliente = None
 
     def init_ui(self):
         self.setFixedSize(WINDOW_W, WINDOW_H)
@@ -140,19 +113,27 @@ class MenuWidget(QWidget):
         form.addRow("IP:", lbl_ip)
         form.addRow(self.lbl_cliente)
         form.addRow(btn)
-        self.iniciar_hilo_servidor()
+        self.iniciar_hilo_rec_servidor()
         dlg.exec()
 
-    def iniciar_hilo_servidor(self):
-        self.conexion_s = Conexion()
-        self.conexion_s.moveToThread(self.hilo)
-        self.hilo.started.connect(self.conexion_s.iniciar_servidor)
+    def iniciar_hilo_rec_servidor(self):
+        self.hilo_servidor_man = QThread()
+        self.conexion_s = Conexion_serv()
+        self.conexion_s.moveToThread(self.hilo_servidor_man)
+        self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
         self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_s.cliente_conectado.connect(self.closeEvent)
-        self.hilo.start()
+        self.conexion_s.movimiento.connect(self.movimiento)
+        self.conexion_s.error.connect(self.error)
+        self.hilo_servidor_man.start()
 
-    def cambiar_lbl(self):
-        self.lbl_cliente.setText("Conexion exitosa")
+    def movimiento(self, coordenadas):
+        print(coordenadas)
+
+    def mand_pantalla(self, msg):
+        self.conexion_s.mandar_servidor(msg)
+
+    def cambiar_lbl(self, mensaje):
+        self.lbl_cliente.setText(mensaje)
 
     def abrir_fachada_cliente(self):
         dlg = QDialog(self)
@@ -162,30 +143,34 @@ class MenuWidget(QWidget):
         form = QFormLayout(dlg)
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
+        self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
-        #btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text()))
-        btn.clicked.connect(lambda: self.iniciar_hilo_cliente(txt_ip.text()))
+        #btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text(), txt.ip.text()))
+        btn.clicked.connect(lambda: self.iniciar_hilo_rec_cliente(txt_nombre.text(), txt_ip.text()))
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", txt_ip)
+        form.addRow(self.lbl_cliente)
         form.addRow(btn)
         dlg.exec()
 
-    def iniciar_hilo_cliente(self, ip):
-        self.conexion_c = Conexion()
-        self.conexion_c.moveToThread(self.hilo)
-        self.hilo.started.connect(lambda: self.conexion_c.iniciar_cliente(ip))
+    def iniciar_hilo_rec_cliente(self, nombre, ip):
+        self.hilo_cliente = QThread()
+        self.conexion_c = Conexion_clien(ip, nombre)
+        self.conexion_c.moveToThread(self.hilo_cliente)
+        self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
+        self.conexion_c.pantalla.connect(self.movimiento)
         self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_c.cliente_conectado.connect(self.closeEvent)
-        self.hilo.start()
+        self.conexion_c.error.connect(self.error)
+        self.hilo_cliente.start()
 
-    def _iniciar(self, dlg, nombre, rival):
+    def _iniciar(self, dlg, nombre):
         if not nombre:
-            QMessageBox.warning(self, "Falta nombre", "Introduce tu nombre para iniciar.")
+            QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
             return
         dlg.accept()
         if self.player:
             self.player.stop()
-        self.app_window.iniciar_juego(nombre or "Jugador", rival or "Rival")
+        self.app_window.iniciar_juego(nombre or "Jugador" or "Rival")
 
     def abrir_records(self):
         dlg = QDialog(self)
@@ -204,6 +189,14 @@ class MenuWidget(QWidget):
         btn = QPushButton("Cerrar"); btn.clicked.connect(dlg.accept); v.addWidget(btn)
         dlg.exec()
 
+    def error(self):
+        print("ocurrio un error")
+
     def closeEvent(self, event):
-        self.hilo.quit()
-        self.hilo.wait()
+        if not self.hilo_cliente:
+            self.hilo_cliente.quit()
+            self.hilo_cliente.wait()
+
+        if not self.hilo_servidor:
+            self.hilo_servidor.quit()
+            self.hilo_servidor.wait()
