@@ -14,7 +14,9 @@ class MenuWidget(QWidget):
         self.init_ui()
         self.init_audio()
         self.hilo_servidor = None
+        self.hilo_cliente = None
         self.lbl_cliente = None
+        self.nombre_contrario = ""
 
     def init_ui(self):
         self.setFixedSize(WINDOW_W, WINDOW_H)
@@ -108,12 +110,12 @@ class MenuWidget(QWidget):
         lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
         self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
-        btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text()))
+        btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
+        self.iniciar_hilo_rec_servidor()
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", lbl_ip)
         form.addRow(self.lbl_cliente)
         form.addRow(btn)
-        self.iniciar_hilo_rec_servidor()
         dlg.exec()
 
     def iniciar_hilo_rec_servidor(self):
@@ -122,12 +124,29 @@ class MenuWidget(QWidget):
         self.conexion_s.moveToThread(self.hilo_servidor_man)
         self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
         self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_s.movimiento.connect(self.movimiento)
+        self.conexion_s.movimiento.connect(self.escucha_serv)
         self.conexion_s.error.connect(self.error)
         self.hilo_servidor_man.start()
 
-    def movimiento(self, coordenadas):
-        print(coordenadas)
+    def verificacion_serv(self, jugador, texto, rol):
+        if not jugador:
+            QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar")
+            return
+        if texto != "CONEXION, ya se puede iniciar la partida":
+            QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
+            return
+        if self.player:
+            self.player.stop()
+        self.app_window.iniciar_juego(jugador, self.nombre_contrario , rol)
+
+
+    def escucha_serv(self, msg):
+        if msg[:8] == "CONEXION":
+            self.nombre_contrario = msg[9:]
+        print("servidor escucho:", msg)
+
+    def escucha_cliente(self, msg):
+        print("cliente escucho:", msg)
 
     def mand_pantalla(self, msg):
         self.conexion_s.mandar_servidor(msg)
@@ -145,8 +164,7 @@ class MenuWidget(QWidget):
         txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
         self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
-        #btn.clicked.connect(lambda: self._iniciar(dlg, txt_nombre.text(), txt.ip.text()))
-        btn.clicked.connect(lambda: self.iniciar_hilo_rec_cliente(txt_nombre.text(), txt_ip.text()))
+        btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", txt_ip)
         form.addRow(self.lbl_cliente)
@@ -158,19 +176,21 @@ class MenuWidget(QWidget):
         self.conexion_c = Conexion_clien(ip, nombre)
         self.conexion_c.moveToThread(self.hilo_cliente)
         self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
-        self.conexion_c.pantalla.connect(self.movimiento)
+        self.conexion_c.pantalla.connect(self.escucha_cliente)
         self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
         self.conexion_c.error.connect(self.error)
         self.hilo_cliente.start()
 
-    def _iniciar(self, dlg, nombre):
-        if not nombre:
+    def verificacion_cliente(self, nombre, ip):
+        if not nombre or not ip:
             QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
             return
-        dlg.accept()
+        self.iniciar_hilo_rec_cliente(nombre, ip)
+
+    def iniciar_juego(self, jugador, rival, rol):
         if self.player:
             self.player.stop()
-        self.app_window.iniciar_juego(nombre or "Jugador" or "Rival")
+        self.app_window.iniciar_juego(jugador, rival, rol)
 
     def abrir_records(self):
         dlg = QDialog(self)
@@ -189,13 +209,17 @@ class MenuWidget(QWidget):
         btn = QPushButton("Cerrar"); btn.clicked.connect(dlg.accept); v.addWidget(btn)
         dlg.exec()
 
-    def error(self):
-        print("ocurrio un error")
+    def error(self, error):
+        print(f"ocurrio un error: {error}")
 
     def closeEvent(self, event):
         if not self.hilo_cliente:
             self.hilo_cliente.quit()
             self.hilo_cliente.wait()
+
+        if not self.hilo_servidor:
+            self.hilo_servidor.quit()
+            self.hilo_servidor.wait()
 
         if not self.hilo_servidor:
             self.hilo_servidor.quit()

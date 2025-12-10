@@ -30,6 +30,6 @@ def cargar_imagen(nombre, w=None, h=None):
         if w and h:
             return pm.scaled(w, h, Qt.KeepAspectRatio, Qt.SmoothTransformation)
         return pm
-    pm = QPixmap(w or 32, h or 32)
+    pm = QPixmap(w, h)
     pm.fill(QColor(120, 120, 120))
     return pm
