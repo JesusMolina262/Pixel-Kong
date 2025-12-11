@@ -7,17 +7,18 @@ class Conexion_serv(QObject):
     error = Signal(str)
     movimiento = Signal(str)
 
-    def __init__(self):
+    def __init__(self, nombre):
         super().__init__()
         self.socket_servidor = socket.socket()
         self.conexion = None
+        self.nombre = nombre
 
     def iniciar_servidor(self):
         try:
             self.socket_servidor.bind(("", 5050))
             self.socket_servidor.listen(1)
             self.conexion, addr = self.socket_servidor.accept()
-            self.conexion.send(f"CONEXION".encode('utf-8'))
+            self.conexion.send(f"CONEXION:{self.nombre}".encode('utf-8'))
             self.cliente_conectado.emit("CONEXION, ya se puede iniciar la partida")
             Thread(target=self.escucha_servidor, daemon=True).start()
         except Exception as e:
@@ -60,7 +61,7 @@ class Conexion_clien(QObject):
             self.socket_cliente = socket.socket()
             self.socket_cliente.connect((self.ip, 5050))
             msg = self.socket_cliente.recv(1024).decode('utf-8')
-            if msg == "CONEXION":
+            if msg[:8] == "CONEXION":
                 self.cliente_man(f"CONEXION:{self.nombre}")
                 self.cliente_conectado.emit(msg + " Esperando a iniciar la partida")
                 Thread(target=self.escucha_cliente, daemon=True).start()
@@ -73,6 +74,11 @@ class Conexion_clien(QObject):
         try:
             while True:
                 msg = self.socket_cliente.recv(1024).decode('utf-8')
+                if not msg:
+                    break  # Conexión cerrada
+
+                print(f"servidor mando: {msg}")
+
                 if msg == "INICIO":
                     self.iniciar_juego.emit()
                 else:
