@@ -135,6 +135,11 @@ class MenuWidget(QWidget):
         if texto != "CONEXION, ya se puede iniciar la partida":
             QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
             return
+        if hasattr(self, 'conexion_s') and self.conexion_s:
+            try:
+                self.conexion_s.mandar_servidor("INICIO")
+            except:
+                pass
         if self.player:
             self.player.stop()
         self.app_window.iniciar_juego(jugador, self.nombre_contrario , rol)
@@ -178,6 +183,7 @@ class MenuWidget(QWidget):
         self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
         self.conexion_c.pantalla.connect(self.escucha_cliente)
         self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
+        self.conexion_c.iniciar_juego.connect(lambda: self.iniciar_juego(nombre, "Servidor", "CLIENTE"))
         self.conexion_c.error.connect(self.error)
         self.hilo_cliente.start()
 

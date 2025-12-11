@@ -2,7 +2,6 @@ import socket
 from threading import Thread
 from PySide6.QtCore import QObject, Signal
 
-
 class Conexion_serv(QObject):
     cliente_conectado = Signal(str)
     error = Signal(str)
@@ -11,16 +10,15 @@ class Conexion_serv(QObject):
     def __init__(self):
         super().__init__()
         self.socket_servidor = socket.socket()
-        self.conn = None
+        self.conexion = None
 
     def iniciar_servidor(self):
         try:
             self.socket_servidor.bind(("", 5050))
             self.socket_servidor.listen(1)
-            conn, addr = self.socket_servidor.accept()
-            conn.send(f"CONEXION".encode('utf-8'))
+            self.conexion, addr = self.socket_servidor.accept()
+            self.conexion.send(f"CONEXION".encode('utf-8'))
             self.cliente_conectado.emit("CONEXION, ya se puede iniciar la partida")
-            self.conexion = conn
             Thread(target=self.escucha_servidor, daemon=True).start()
         except Exception as e:
             print(e)
@@ -29,7 +27,7 @@ class Conexion_serv(QObject):
 
     def mandar_servidor(self, msg):
         try:
-            self.conn.send(msg.encode('utf-8'))
+            self.conexion.send(msg.encode('utf-8'))
         except Exception as e:
             print(e)
             self.socket_servidor.close()
@@ -64,8 +62,8 @@ class Conexion_clien(QObject):
             msg = self.socket_cliente.recv(1024).decode('utf-8')
             if msg == "CONEXION":
                 self.cliente_man(f"CONEXION:{self.nombre}")
-                self.cliente_conectado.emit(msg+ " Esperando a iniciar la partida")
-                Thread(target=self.escucha_cliente, daemon=True)
+                self.cliente_conectado.emit(msg + " Esperando a iniciar la partida")
+                Thread(target=self.escucha_cliente, daemon=True).start()
         except Exception as e:
             print(e)
             self.socket_cliente.close()
@@ -73,11 +71,11 @@ class Conexion_clien(QObject):
 
     def escucha_cliente(self):
         try:
-            msg = self.socket_cliente.recv(1024).decode('utf-8')
-            if msg == "INICIO":
-                self.iniciar_juego.emit()
-                while True:
-                    msg = self.socket_cliente.recv(1024).decode('utf-8')
+            while True:
+                msg = self.socket_cliente.recv(1024).decode('utf-8')
+                if msg == "INICIO":
+                    self.iniciar_juego.emit()
+                else:
                     self.pantalla.emit(msg)
         except Exception as e:
             print(e)

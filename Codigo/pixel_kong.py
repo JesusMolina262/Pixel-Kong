@@ -530,10 +530,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.menu)
 
     def iniciar_juego(self, nombre, rival, rol):
-        if rol == "SERVIDOR":
-            self.juego = JuegoWidget_servidor(self, nombre, rival)
-        else:
-            self.juego = JuegoWidget_cliente(self, nombre, rival)
+       # if rol == "SERVIDOR":
+            #self.juego = JuegoWidget_servidor(self, nombre, rival)
+        #else:
+            #self.juego = JuegoWidget_cliente(self, nombre, rival)
+        self.juego = JuegoWidget_servidor(self, nombre, rival)
         self.setCentralWidget(self.juego)
         self.juego.setFocus()
 
