@@ -113,8 +113,8 @@ class MenuWidget(QWidget):
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         lbl_ip = QLabel()
         lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
-        self.lbl_cliente = QLabel("CONEXION, ya se puede iniciar la partida")
-        #self.lbl_cliente = QLabel("Esperando conexion...")
+        #self.lbl_cliente = QLabel("CONEXION, ya se puede iniciar la partida")
+        self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
         btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
         self.iniciar_hilo_rec_servidor()
@@ -130,7 +130,7 @@ class MenuWidget(QWidget):
         self.conexion_s.moveToThread(self.hilo_servidor_man)
         self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
         self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_s.movimiento.connect(self.escucha_serv)
+        self.conexion_s.mensaje.connect(self.escucha_serv)
         self.conexion_s.error.connect(self.error)
         self.hilo_servidor_man.start()
 
@@ -147,20 +147,21 @@ class MenuWidget(QWidget):
     def escucha_serv(self, msg):
         if msg[:8] == "CONEXION":
             self.nombre_contrario = msg[9:]
-        self.posicion.emit(msg) #checar
-        print("el servidor escucho",msg)
+            return
+        print(f"[SERVIDOR] Emitiendo señal posicion con: {msg}")
+        self.posicion.emit(msg)
 
     def escucha_cliente(self, msg):
         if msg[:8] == "CONEXION":
             self.nombre_contrario = msg[9:]
+            return
+        print(f"[CLIENTE] Emitiendo señal pantalla con: {msg}")
         self.pantalla.emit(msg)
-        print("cliente escucho:", msg)
 
-    def mand_pantalla(self, msg):
-        print("mandando", msg)
+    def mand_msg_serv(self, msg):
         self.conexion_s.mandar_servidor(msg)
 
-    def mand_posicion(self, msg):
+    def mand_msg_clien(self, msg):
         self.conexion_c.cliente_man(msg)
 
     def cambiar_lbl(self, mensaje):
@@ -175,12 +176,12 @@ class MenuWidget(QWidget):
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
         self.lbl_cliente = QLabel("Esperando conexion...")
-        btn = QPushButton("INICIAR")
-        btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
+        self.btn = QPushButton("INICIAR")
+        self.btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", txt_ip)
         form.addRow(self.lbl_cliente)
-        form.addRow(btn)
+        form.addRow(self.btn)
         dlg.exec()
 
     def iniciar_hilo_rec_cliente(self, nombre, ip):
@@ -188,7 +189,7 @@ class MenuWidget(QWidget):
         self.conexion_c = Conexion_clien(ip, nombre)
         self.conexion_c.moveToThread(self.hilo_cliente)
         self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
-        self.conexion_c.pantalla.connect(self.escucha_cliente)
+        self.conexion_c.mensaje.connect(self.escucha_cliente)
         self.conexion_c.iniciar_juego.connect(self.iniciar_inicio)
         self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
         self.conexion_c.error.connect(self.error)
@@ -199,6 +200,7 @@ class MenuWidget(QWidget):
             QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
             return
         self.jugador = nombre
+        self.btn.setDisabled(True)
         self.iniciar_hilo_rec_cliente(nombre, ip)
 
     def iniciar_inicio(self):
@@ -209,10 +211,7 @@ class MenuWidget(QWidget):
             self.player.stop()
         self.app_window.iniciar_juego(jugador, rival, rol)
         if rol == "SERVIDOR":
-            self.mand_pantalla("INICIO")
-            #self.app_window.mensaje.connect(self.mand_pantalla)
-        else:
-            self.app_window.mensaje.connect(self.mand_posicion)
+            self.mand_msg_serv("INICIO")
 
     def abrir_records(self):
         dlg = QDialog(self)
