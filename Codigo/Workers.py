@@ -6,12 +6,14 @@ class Conexion_serv(QObject):
     cliente_conectado = Signal(str)
     error = Signal(str)
     movimiento = Signal(str)
+    iniciar_juego = Signal()
 
     def __init__(self, nombre):
         super().__init__()
         self.socket_servidor = socket.socket()
         self.conexion = None
         self.nombre = nombre
+
 
     def iniciar_servidor(self):
         try:
@@ -73,20 +75,29 @@ class Conexion_clien(QObject):
     def escucha_cliente(self):
         try:
             while True:
-                msg = self.socket_cliente.recv(1024).decode('utf-8')
-                if not msg:
-                    break  # Conexión cerrada
+                try:
+                    msg = self.socket_cliente.recv(1024).decode('utf-8')
+                    if not msg:
+                        print("Conexión cerrada normalmente por el servidor")
+                        break  # Conexión cerrada
 
-                print(f"servidor mando: {msg}")
+                    print(f"Cliente recibió: {msg}")
 
-                if msg == "INICIO":
-                    self.iniciar_juego.emit()
-                else:
-                    self.pantalla.emit(msg)
+                    if msg == "INICIO":
+                        self.iniciar_juego.emit()
+                    else:
+                        self.pantalla.emit(msg)
+                except ConnectionResetError:
+                    print("Conexión cerrada por el servidor")
+                    break
+                except ConnectionAbortedError:
+                    print("Conexión abortada")
+                    break
         except Exception as e:
-            print(e)
-            self.socket_cliente.close()
-            self.error.emit(e)
+            print(f"Error general en escucha_cliente: {e}")
+            if self.socket_cliente:
+                self.socket_cliente.close()
+            self.error.emit(str(e))
 
     def cliente_man(self, msg):
         try:

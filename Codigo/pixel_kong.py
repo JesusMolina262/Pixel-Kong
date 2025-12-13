@@ -209,7 +209,16 @@ class JuegoWidget_servidor(QWidget):
         self.jy = min(self.jy, WINDOW_H - self.j_h)
 
         self.update()
-        self.mensaje.emit(f"{self.salto_vel_j2}%{self.jx}%{self.jy}%{self.puntos}%{self.puntos_j2}%{self.vidas}%{self.ganador}")
+        try:
+
+            if hasattr(self.app_window.menu, 'conexion_s') and self.app_window.menu.conexion_s:
+
+                if hasattr(self.app_window.menu.conexion_s, 'conexion'):
+                    self.mensaje.emit(
+                        f"{self.salto_vel_j2}%{self.jx}%{self.jy}%{self.puntos}%{self.puntos_j2}%{self.vidas}%{self.ganador}")
+        except Exception as e:
+            print(f"Error enviando mensaje desde servidor: {e}")
+
 
         # Mover obstáculos
         for obs in self.obstaculos:
@@ -594,6 +603,10 @@ class MainWindow(QMainWindow):
         self.setFixedSize(WINDOW_W, WINDOW_H)
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
+        self.conexion_servidor = None
+        self.conexion_cliente = None
+        self.hilo_servidor = None
+        self.hilo_cliente = None
 
     def iniciar_juego(self, nombre, rival, rol):
         if rol == "SERVIDOR":
@@ -611,9 +624,28 @@ class MainWindow(QMainWindow):
         self.mensaje.emit(msg)
 
     def volver_menu(self):
+        # Guardar referencias a conexiones activas
+        if hasattr(self, 'menu'):
+            if hasattr(self.menu, 'conexion_s') and self.menu.conexion_s:
+                self.conexion_servidor = self.menu.conexion_s
+                self.hilo_servidor = self.menu.hilo_servidor_man
+
+            if hasattr(self.menu, 'conexion_c') and self.menu.conexion_c:
+                self.conexion_cliente = self.menu.conexion_c
+                self.hilo_cliente = self.menu.hilo_cliente
+
+
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
 
+        # Restaurar conexiones si existían
+        if self.conexion_servidor:
+            self.menu.conexion_s = self.conexion_servidor
+            self.menu.hilo_servidor_man = self.hilo_servidor
+
+        if self.conexion_cliente:
+            self.menu.conexion_c = self.conexion_cliente
+            self.menu.hilo_cliente = self.hilo_cliente
 
 app = QApplication(sys.argv)
 win = MainWindow()
