@@ -1,5 +1,4 @@
 import threading
-import time
 
 from PySide6.QtCore import Qt, QUrl, QThread, Signal
 from PySide6.QtGui import QFont, QFontDatabase
@@ -9,7 +8,6 @@ from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H, RECORDS_FILE
 import socket
 from Workers import Conexion_serv, Conexion_clien
-
 
 class MenuWidget(QWidget):
     pantalla = Signal(str)
@@ -115,7 +113,6 @@ class MenuWidget(QWidget):
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         lbl_ip = QLabel()
         lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
-
         #self.lbl_cliente = QLabel("CONEXION, ya se puede iniciar la partida")
         self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
@@ -133,8 +130,7 @@ class MenuWidget(QWidget):
         self.conexion_s.moveToThread(self.hilo_servidor_man)
         self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
         self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_s.movimiento.connect(self.escucha_serv)
-        self.conexion_s.iniciar_juego.connect(self.iniciar_inicio)
+        self.conexion_s.mensaje.connect(self.escucha_serv)
         self.conexion_s.error.connect(self.error)
         self.hilo_servidor_man.start()
 
@@ -146,64 +142,26 @@ class MenuWidget(QWidget):
             QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
             return
         self.jugador = jugador
-
-        conexion_backup = self.conexion_s if hasattr(self, 'conexion_s') else None
-        hilo_backup = self.hilo_servidor_man if hasattr(self, 'hilo_servidor_man') else None
-
-        current_dialog = self.parent()
-        if current_dialog and isinstance(current_dialog, QDialog):
-            current_dialog.accept()
-
-        if conexion_backup:
-            self.conexion_s = conexion_backup
-            self.conexion_s.setParent(self.app_window)
-
-        if hilo_backup:
-            self.hilo_servidor_man = hilo_backup
-            self.hilo_servidor_man.setParent(self.app_window)
-
-        import time
-        time.sleep(0.5)
-
-        self.iniciar_juego(jugador, self.nombre_contrario, rol)
-
-        if hasattr(self, 'conexion_s') and self.conexion_s:
-            try:
-
-                time.sleep(0.3)
-                self.conexion_s.mandar_servidor("INICIO")
-                print("Servidor envió INICIO al cliente")
-            except Exception as e:
-                print(f"Error enviando INICIO: {e}")
-
-    def iniciar_inicio(self):
-        print("Cliente: Recibí INICIO, abriendo juego...")
-        if self.player:
-            self.player.stop()
-
-        if self.parent() and isinstance(self.parent(), QDialog):
-            self.parent().accept()
-
-        time.sleep(0.3)
-        self.app_window.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
+        self.iniciar_juego(jugador, self.nombre_contrario , rol)
 
     def escucha_serv(self, msg):
         if msg[:8] == "CONEXION":
             self.nombre_contrario = msg[9:]
-        self.posicion.emit(msg) #checar
-        print("el servidor escucho",msg)
+            return
+        print(f"[SERVIDOR] Emitiendo señal posicion con: {msg}")
+        self.posicion.emit(msg)
 
     def escucha_cliente(self, msg):
         if msg[:8] == "CONEXION":
             self.nombre_contrario = msg[9:]
+            return
+        print(f"[CLIENTE] Emitiendo señal pantalla con: {msg}")
         self.pantalla.emit(msg)
-        print("cliente escucho:", msg)
 
-    def mand_pantalla(self, msg):
-        print("mandando", msg)
+    def mand_msg_serv(self, msg):
         self.conexion_s.mandar_servidor(msg)
 
-    def mand_posicion(self, msg):
+    def mand_msg_clien(self, msg):
         self.conexion_c.cliente_man(msg)
 
     def cambiar_lbl(self, mensaje):
@@ -218,12 +176,12 @@ class MenuWidget(QWidget):
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
         self.lbl_cliente = QLabel("Esperando conexion...")
-        btn = QPushButton("INICIAR")
-        btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
+        self.btn = QPushButton("INICIAR")
+        self.btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", txt_ip)
         form.addRow(self.lbl_cliente)
-        form.addRow(btn)
+        form.addRow(self.btn)
         dlg.exec()
 
     def iniciar_hilo_rec_cliente(self, nombre, ip):
@@ -231,7 +189,7 @@ class MenuWidget(QWidget):
         self.conexion_c = Conexion_clien(ip, nombre)
         self.conexion_c.moveToThread(self.hilo_cliente)
         self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
-        self.conexion_c.pantalla.connect(self.escucha_cliente)
+        self.conexion_c.mensaje.connect(self.escucha_cliente)
         self.conexion_c.iniciar_juego.connect(self.iniciar_inicio)
         self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
         self.conexion_c.error.connect(self.error)
@@ -242,47 +200,18 @@ class MenuWidget(QWidget):
             QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
             return
         self.jugador = nombre
+        self.btn.setDisabled(True)
         self.iniciar_hilo_rec_cliente(nombre, ip)
 
     def iniciar_inicio(self):
-        print("Cliente: Recibí INICIO, abriendo juego...")
-
-        conexion_backup = self.conexion_c if hasattr(self, 'conexion_c') else None
-        hilo_backup = self.hilo_cliente if hasattr(self, 'hilo_cliente') else None
-
-        if self.player:
-            self.player.stop()
-        current_dialog = self.parent()
-        if current_dialog and isinstance(current_dialog, QDialog):
-            current_dialog.accept()
-
-        if conexion_backup:
-            self.conexion_c = conexion_backup
-            self.conexion_c.setParent(self.app_window)
-
-        if hilo_backup:
-            self.hilo_cliente = hilo_backup
-            self.hilo_cliente.setParent(self.app_window)
-
-        time.sleep(0.3)
-
         self.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
 
     def iniciar_juego(self, jugador, rival, rol):
         if self.player:
             self.player.stop()
-        try:
-            if hasattr(self.app_window, 'mensaje'):
-                self.app_window.mensaje.disconnect()
-        except:
-            pass
-
         self.app_window.iniciar_juego(jugador, rival, rol)
-
         if rol == "SERVIDOR":
-            self.app_window.juego.mensaje.connect(self.mand_pantalla)
-        else:
-            self.app_window.juego.mensaje.connect(self.mand_posicion)
+            self.mand_msg_serv("INICIO")
 
     def abrir_records(self):
         dlg = QDialog(self)

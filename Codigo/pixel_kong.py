@@ -14,12 +14,12 @@ class JuegoWidget_servidor(QWidget):
         self.app_window = app_window
         self.nombre = nombre
         self.rival = rival
-        self.ganador = None
 
         # --- recursos ---
         self.pm_fondo = cargar_imagen("fondo.png", WINDOW_W, WINDOW_H)
         self.pm_mario = cargar_imagen("mario.png", 30, 30)
         self.pm_rival = cargar_imagen("mario2.png", 30, 30)
+        self.estrella = cargar_imagen("estrella.png", 20, 20)
         self.pm_barril = cargar_imagen("barril.png", 25, 25)
         self.pm_cascara = cargar_imagen("cascara.png", 25, 25)
         self.pm_bomba = cargar_imagen("bomba.png", 25, 25)
@@ -51,7 +51,6 @@ class JuegoWidget_servidor(QWidget):
 
         self.puntos_j2 = 0
         self.vidas_j2 = 3
-        self.inmune_j2 = False
 
         # --- listas inicializadas ANTES ---
         self.plataformas = []
@@ -97,7 +96,6 @@ class JuegoWidget_servidor(QWidget):
         self.timer_power_aux.timeout.connect(self.restaurar_velocidades)
 
     def construir_nivel(self):
-            # Ejemplo simple: plataformas y escaleras
         self.plataformas = [
             QRect(0, 600, 960, 20), #abajo
             QRect(0, 450, 760, 20), #enmedio abajo
@@ -153,6 +151,9 @@ class JuegoWidget_servidor(QWidget):
             pm = self.pm_power_inmune if p["tipo"] == "inmune" else self.pm_power_lento if p["tipo"]=="lento" else self.pm_power_salto
             painter.drawPixmap(int(p["x"]), int(p["y"]), pm)
 
+            #Dibujar estrella
+        painter.drawPixmap(120,50, self.estrella)
+
             # HUD: puntos y vidas
         painter.setFont(QFont("Arial", 18))
         painter.setPen(Qt.white)
@@ -165,14 +166,19 @@ class JuegoWidget_servidor(QWidget):
 
     def obstaculo_en_plataforma(self, obs):
         for plat in self.plataformas:
-            distancia_y = plat.top() - (obs["y"] + 27)
+            distancia_y = plat.top() - (obs["y"] + 28)
             # Si el obstaculo esta encima de esa plataforma
             if -5 <= distancia_y <= 5:
                 # Si el obstaculo esta horizontalmente en la plataforma
-                if (obs["x"] + 27 > plat.left() and obs["x"] < plat.right()):
+                if (obs["x"] + 28 > plat.left() and obs["x"] < plat.right()):
                     return True
         # Si esta cayendo, cambia de direccion
-        obs["vx"] *= -1
+        if obs["y"] == 252:
+            obs["vx"] *= -1
+        elif obs["y"] == 400:
+            obs["vx"] *= -1
+        elif obs["y"] == 548:
+            obs["vx"] *= -1
         return False
 
     def bucle(self):
@@ -209,16 +215,8 @@ class JuegoWidget_servidor(QWidget):
         self.jy = min(self.jy, WINDOW_H - self.j_h)
 
         self.update()
-        try:
 
-            if hasattr(self.app_window.menu, 'conexion_s') and self.app_window.menu.conexion_s:
-
-                if hasattr(self.app_window.menu.conexion_s, 'conexion'):
-                    self.mensaje.emit(
-                        f"{self.salto_vel_j2}%{self.jx}%{self.jy}%{self.puntos}%{self.puntos_j2}%{self.vidas}%{self.ganador}")
-        except Exception as e:
-            print(f"Error enviando mensaje desde servidor: {e}")
-
+        self.mensaje.emit(f"pos{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
 
         # Mover obstáculos
         for obs in self.obstaculos:
@@ -234,8 +232,6 @@ class JuegoWidget_servidor(QWidget):
                 if obs in self.obstaculos:
                     self.obstaculos.remove(obs)
 
-        pj2_rect = QRect(int(self.j2x), int(self.j2y), self.j2_w, self.j2_h)
-
             # Colisiones y caida de obstáculos
         for obs in self.obstaculos[:]:
             obs_rect = QRect(int(obs["x"]), int(obs["y"]), 28, 28)
@@ -243,26 +239,19 @@ class JuegoWidget_servidor(QWidget):
                 self.perder_vida(self.nombre)
                 self.obstaculos.remove(obs)
                 break
-            if pj2_rect.intersects(obs_rect) and not self.inmune_j2:
-                self.perder_vida(self.rival)
-                self.obstaculos.remove(obs)
-                break
 
             # Colisiones con power-ups
         for p in self.powerups[:]:
             p_rect = QRect(p["x"], p["y"], 28, 28)
             if pj_rect.intersects(p_rect):
-                self.aplicar_powerup(p["tipo"], self.nombre)
-                self.powerups.remove(p)
-            if pj2_rect.intersects(p_rect):
-                self.aplicar_powerup(p["tipo"], self.rival)
+                self.aplicar_powerup(p["tipo"])
                 self.powerups.remove(p)
 
             # Subir de nivel
-        if self.jy < 10:
+        e_rect = QRect(120, 50, 20, 20)
+        if pj_rect.intersects(e_rect):
+            self.mensaje.emit("ganador")
             self.subir_nivel(self.nombre)
-        if self.j2y < 10:
-            self.subir_nivel(self.rival)
 
     def perder_vida(self, jugador):
         if jugador == self.nombre:
@@ -273,65 +262,42 @@ class JuegoWidget_servidor(QWidget):
             else:
                 self.jx, self.jy = 80, 550
         else:
-            self.vidas_j2 -= 1
-            if self.vidas_j2 <= 0:
-                QMessageBox.information(self, "Game Over", f"{self.rival} perdió todas las vidas!")
-                self.app_window.volver_menu()
-            else:
-                self.j2x, self.j2y = 80, 550
+            QMessageBox.information(self, "Game Over", f"{self.rival} perdió todas las vidas!")
+            self.app_window.volver_menu()
 
-    def aplicar_powerup(self, tipo, jugador):
-        if jugador == self.nombre:
-            self.puntos += 500
-            if tipo == "inmune":
-                self.inmune = True
-                QTimer.singleShot(5000, lambda: setattr(self, 'inmune', False))
+    def aplicar_powerup(self, tipo):
+        self.puntos += 500
+        if tipo == "inmune":
+            self.inmune = True
+            QTimer.singleShot(5000, lambda: setattr(self, 'inmune', False))
 
-            elif tipo == "lento":
-                # Reducir velocidad de obstáculos
-                for o in self.obstaculos:
-                    o["vx"] = 1
+        elif tipo == "lento":
+            # Reducir velocidad de obstáculos
+            for o in self.obstaculos:
+                o["vx"] /= 2
 
-                # Programar restauración con temporizador propio
-                self.timer_power_aux.start(5000)
+            # Programar restauración con temporizador propio
+            self.timer_power_aux.start(5000)
 
-            elif tipo == "salto":
-                self.salto_vel = -12
-                QTimer.singleShot(1000, lambda: setattr(self, 'salto_vel', -8))
-        else:
-            self.puntos_j2 += 500
-            if tipo == "inmune":
-                self.inmune_j2 = True
-                self.mensaje.emit("inmune")
-                QTimer.singleShot(5000, lambda: setattr(self, 'inmune', False))
-
-            elif tipo == "lento":
-                self.mensaje.emit("lento")
-                # Reducir velocidad de obstáculos
-                for o in self.obstaculos:
-                    o["vx"] = 1
-
-                # Programar restauración con temporizador propio
-                self.timer_power_aux.start(5000)
-
-            elif tipo == "salto":
-                self.salto_vel_j2 = -12
-                QTimer.singleShot(1000, lambda: setattr(self, 'salto_vel', -8))
+        elif tipo == "salto":
+            self.salto_vel = -12
+            QTimer.singleShot(5000, lambda: setattr(self, 'salto_vel', -8))
 
     def restaurar_velocidades(self):
         for o in self.obstaculos:
-            o["vx"] = 2
+            if o["vx"]>0:
+                o["vx"] = 2
+            else:
+                o["vx"] = -2
         self.mensaje.emit("normal")
 
     def subir_nivel(self, jugador):
         self.nivel += 1
         self.jx, self.jy = 80, 550
-        self.jx, self.jy = 70, 550
+        self.jx, self.jy = 80, 550
         self.obstaculos.clear()
         self.powerups.clear()
-        self.ganador = jugador
         QMessageBox.information(self, f"{jugador} completo el nivel", f"¡Nivel {self.nivel}!")
-        self.ganador = None
 
     def keyPressEvent(self, event):
         if event.key() == (Qt.Key_Left): self.key_left = True
@@ -346,13 +312,29 @@ class JuegoWidget_servidor(QWidget):
         if event.key() == (Qt.Key_Down): self.key_down = False
 
     def posicion_j2(self, posicion):
+        #pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}
         partes = posicion.split("%")
-        if len(partes) >= 3 and partes[0] == "pos":
-            self.j2x = float(partes[1])
-            self.j2y = float(partes[2])
+        self.j2x = float(partes[1])
+        self.j2y = float(partes[2])
+        self.puntos_j2 = int(partes[3])
+        self.vidas_j2 = int(partes[4])
+        if self.vidas_j2 == 0:
+            self.perder_vida(self.rival)
+
+    def recibir(self, msg):
+        partes = msg.split("%")
+        if partes[0] == "pos":
+            self.posicion_j2(msg)
+        elif partes[0] == "lento":
+            self.aplicar_powerup(partes[0])
+        elif partes[0] == "normal":
+            self.restaurar_velocidades()
+        elif partes[0] == "ganador":
+            self.subir_nivel(self.rival)
 
 class JuegoWidget_cliente(QWidget):
     mensaje = Signal(str)
+
     def __init__(self, app_window, nombre, rival):
         super().__init__()
         self.app_window = app_window
@@ -363,6 +345,7 @@ class JuegoWidget_cliente(QWidget):
         self.pm_fondo = cargar_imagen("fondo.png", WINDOW_W, WINDOW_H)
         self.pm_mario = cargar_imagen("mario.png", 30, 30)
         self.pm_rival = cargar_imagen("mario2.png", 30, 30)
+        self.estrella = cargar_imagen("estrella.png", 20, 20)
         self.pm_barril = cargar_imagen("barril.png", 25, 25)
         self.pm_cascara = cargar_imagen("cascara.png", 25, 25)
         self.pm_bomba = cargar_imagen("bomba.png", 25, 25)
@@ -389,6 +372,8 @@ class JuegoWidget_cliente(QWidget):
         # --- estado jugador 2 ---
         self.j2_w, self.j2_h = 25, 30
         self.j2x, self.j2y = 80.0, 520.0
+        self.salto_vel_j2 = -10.0
+
         self.puntos_j2 = 0
         self.vidas_j2 = 3
 
@@ -400,7 +385,6 @@ class JuegoWidget_cliente(QWidget):
 
         # --- construir nivel ---
         self.construir_nivel()
-
         # --- timer principal que actualiza el juego ---
         self.setFocusPolicy(Qt.StrongFocus)
         self.setFocus(Qt.OtherFocusReason)
@@ -437,21 +421,17 @@ class JuegoWidget_cliente(QWidget):
 
     def generar_obstaculo(self, tipo):
         # Barriles, cáscaras o bombas
-        partes = tipo.split("%")
-        if len(partes) >= 2:
-            tipo_obs = partes[1]
-            x = 0
-            y = 120
-            vx = 2
-            self.obstaculos.append({"tipo": tipo_obs, "x": x, "y": y, "vx": vx})
+        x = 0
+        y = 120  # nivel superior
+        vx = 2
+        self.obstaculos.append({"tipo": tipo, "x": x, "y": y, "vx": vx})
 
-    def generar_powerup(self, todo):
-        partes = todo.split("%")
-        if len(partes) >= 4:
-            tipo = partes[1]
-            x = int(partes[2])
-            y = int(partes[3])
-            self.powerups.append({"tipo": tipo, "x": x, "y": y})
+    def generar_powerup(self, pow):
+        partes = pow.split("%")
+        tipo = partes[1]
+        x = partes[2]
+        y = partes[3]
+        self.powerups.append({"tipo": tipo, "x": x, "y": y})
 
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -472,13 +452,18 @@ class JuegoWidget_cliente(QWidget):
 
             # Dibujar obstáculos
         for obs in self.obstaculos:
-            pm = self.pm_barril if obs["tipo"] == "barril" else self.pm_cascara if obs["tipo"] == "cascara" else self.pm_bomba
+            pm = self.pm_barril if obs["tipo"] == "barril" else self.pm_cascara if obs[
+                                                                                       "tipo"] == "cascara" else self.pm_bomba
             painter.drawPixmap(int(obs["x"]), int(obs["y"]), pm)
 
             # Dibujar power-ups
         for p in self.powerups:
-            pm = self.pm_power_inmune if p["tipo"] == "inmune" else self.pm_power_lento if p["tipo"] == "lento" else self.pm_power_salto
+            pm = self.pm_power_inmune if p["tipo"] == "inmune" else self.pm_power_lento if p[
+                                                                                               "tipo"] == "lento" else self.pm_power_salto
             painter.drawPixmap(int(p["x"]), int(p["y"]), pm)
+
+            # Dibujar estrella
+        painter.drawPixmap(100, 30, self.estrella)
 
             # HUD: puntos y vidas
         painter.setFont(QFont("Arial", 18))
@@ -499,7 +484,12 @@ class JuegoWidget_cliente(QWidget):
                 if (obs["x"] + 28 > plat.left() and obs["x"] < plat.right()):
                     return True
         # Si esta cayendo, cambia de direccion
-        obs["vx"] *= -1
+        if obs["y"] == 252:
+            obs["vx"] *= -1
+        elif obs["y"] == 400:
+            obs["vx"] *= -1
+        elif obs["y"] == 548:
+            obs["vx"] *= -1
         return False
 
     def bucle(self):
@@ -509,25 +499,11 @@ class JuegoWidget_cliente(QWidget):
         if self.key_right:
             self.jx += 4
 
+            # Gravedad
         self.jvy += self.gravedad
         self.jy += self.jvy
 
-        self.mensaje.emit(f"pos%{self.jx}%{self.jy}")
-
-        for obs in self.obstaculos[:]:
-            if not self.obstaculo_en_plataforma(obs):
-                obs["y"] += 4
-            else:
-                obs["x"] += obs["vx"]
-
-            # Quitar si salen de pantalla
-            if (obs["x"] < -50 or obs["x"] > WINDOW_W + 50 or obs["y"] > WINDOW_H + 50):
-                if obs in self.obstaculos:
-                    self.obstaculos.remove(obs)
-
-        self.update()
-
-            # Colisión con plataformas
+        # Colisión con plataformas
         on_platform = False
         pj_rect = QRect(int(self.jx), int(self.jy), self.j_w, self.j_h)
         for plat in self.plataformas:
@@ -549,9 +525,44 @@ class JuegoWidget_cliente(QWidget):
         self.jx = max(0, min(self.jx, WINDOW_W - self.j_w))
         self.jy = min(self.jy, WINDOW_H - self.j_h)
 
-    def subir_nivel(self, jugador):
-        self.nivel += 1
-        QMessageBox.information(self, f"{jugador} completo el nivel", f"¡Nivel {self.nivel}!")
+        self.update()
+
+        self.mensaje.emit(f"pos{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
+
+        # Mover obstáculos
+        for obs in self.obstaculos:
+            # Aplicar gravedad si no está en plataforma
+            if not self.obstaculo_en_plataforma(obs):
+                obs["y"] += 4  # Velocidad de caída
+            else:
+                # Si está en plataforma, mover horizontalmente según su dirección
+                obs["x"] += obs["vx"]
+
+            # Quitar los que salieron de la pantalla por los costados o abajo
+            if (obs["x"] < -50 or obs["x"] > WINDOW_W + 50 or obs["y"] > WINDOW_H + 50):
+                if obs in self.obstaculos:
+                    self.obstaculos.remove(obs)
+
+            # Colisiones y caida de obstáculos
+        for obs in self.obstaculos[:]:
+            obs_rect = QRect(int(obs["x"]), int(obs["y"]), 28, 28)
+            if pj_rect.intersects(obs_rect) and not self.inmune:
+                self.perder_vida(self.nombre)
+                self.obstaculos.remove(obs)
+                break
+
+            # Colisiones con power-ups
+        for p in self.powerups[:]:
+            p_rect = QRect(p["x"], p["y"], 28, 28)
+            if pj_rect.intersects(p_rect):
+                self.aplicar_powerup(p["tipo"])
+                self.powerups.remove(p)
+
+            # Subir de nivel
+        e_rect = QRect(120, 50, 20, 20)
+        if pj_rect.intersects(e_rect):
+            self.mensaje.emit("ganador")
+            self.subir_nivel(self.nombre)
 
     def perder_vida(self, jugador):
         if jugador == self.nombre:
@@ -559,93 +570,116 @@ class JuegoWidget_cliente(QWidget):
             if self.vidas <= 0:
                 QMessageBox.information(self, "Game Over", f"{self.nombre} perdió todas las vidas!")
                 self.app_window.volver_menu()
+            else:
+                self.jx, self.jy = 80, 550
+        else:
+            QMessageBox.information(self, "Game Over", f"{self.rival} perdió todas las vidas!")
+            self.app_window.volver_menu()
+
+    def aplicar_powerup(self, tipo):
+        self.puntos += 500
+        if tipo == "inmune":
+            self.inmune = True
+            QTimer.singleShot(5000, lambda: setattr(self, 'inmune', False))
+
+        elif tipo == "lento":
+            # Reducir velocidad de obstáculos
+            for o in self.obstaculos:
+                o["vx"] /= 2
+
+            # Programar restauración con temporizador propio
+            self.timer_power_aux.start(5000)
+
+        elif tipo == "salto":
+            self.salto_vel = -12
+            QTimer.singleShot(5000, lambda: setattr(self, 'salto_vel', -8))
+
+    def restaurar_velocidades(self):
+        for o in self.obstaculos:
+            if o["vx"] > 0:
+                o["vx"] = 2
+            else:
+                o["vx"] = -2
+        self.mensaje.emit("normal")
+
+    def subir_nivel(self, jugador):
+        self.nivel += 1
+        self.jx, self.jy = 80, 550
+        self.obstaculos.clear()
+        self.powerups.clear()
+        QMessageBox.information(self, f"{jugador} completo el nivel", f"¡Nivel {self.nivel}!")
 
     def keyPressEvent(self, event):
         if event.key() == (Qt.Key_Left): self.key_left = True
         if event.key() == (Qt.Key_Right): self.key_right = True
         if event.key() == (Qt.Key_Up): self.key_up = True
         if event.key() == (Qt.Key_Down): self.key_down = True
-        if event.key() == Qt.Key_Up: self.key_up = True
 
     def keyReleaseEvent(self, event):
         if event.key() == (Qt.Key_Left): self.key_left = False
         if event.key() == (Qt.Key_Right): self.key_right = False
         if event.key() == (Qt.Key_Up): self.key_up = False
         if event.key() == (Qt.Key_Down): self.key_down = False
-        if event.key() == Qt.Key_Up: self.key_up = False
 
-    def actu_pantalla(self, msg):
+    def posicion_j2(self, posicion):
+        # pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}
+        partes = posicion.split("%")
+        self.j2x = float(partes[1])
+        self.j2y = float(partes[2])
+        self.puntos_j2 = int(partes[3])
+        self.vidas_j2 = int(partes[4])
+        if self.vidas_j2 == 0:
+            self.perder_vida(self.rival)
+
+    def recibir(self, msg):
         partes = msg.split("%")
         if partes[0] == "pos":
-            # pos%jx%jy%puntos%puntos_j2%vidas%vidas_j2%inmune
-            try:
-                self.j2x = float(partes[1])
-                self.j2y = float(partes[2])
-                self.puntos = int(partes[3])
-                self.puntos_j2 = int(partes[4])
-                self.vidas = int(partes[5])
-                self.vidas_j2 = int(partes[6])
-                self.inmune = bool(int(partes[7]))
-            except:
-                pass
+            self.posicion_j2(msg)
         elif partes[0] == "obs":
-            self.generar_obstaculo(msg)
+            self.generar_obstaculo(partes[1])
         elif partes[0] == "pow":
             self.generar_powerup(msg)
+        elif partes[0] == "lento":
+            self.aplicar_powerup(partes[0])
+        elif partes[0] == "normal":
+            self.restaurar_velocidades()
+        elif partes[0] == "ganador":
+            self.subir_nivel(self.rival)
 
 
 # ---------- VENTANA PRINCIPAL ----------
 class MainWindow(QMainWindow):
-    mensaje = Signal(str)
     def __init__(self):
         super().__init__()
         self.setWindowTitle("PIXEL KONG")
         self.setFixedSize(WINDOW_W, WINDOW_H)
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
-        self.conexion_servidor = None
-        self.conexion_cliente = None
-        self.hilo_servidor = None
-        self.hilo_cliente = None
+        self.menu.pantalla.connect(self.recibir_mensaje_cliente)
+        self.menu.posicion.connect(self.recibir_mensaje_servidor)
 
     def iniciar_juego(self, nombre, rival, rol):
         if rol == "SERVIDOR":
             self.juego = JuegoWidget_servidor(self, nombre, rival)
-            self.menu.posicion.connect(self.juego.posicion_j2)
-            self.juego.mensaje.connect(self.mandar_mensaje)
+            self.juego.mensaje.connect(lambda msg: self.menu.mand_msg_serv(msg))
         else:
             self.juego = JuegoWidget_cliente(self, nombre, rival)
-            self.menu.pantalla.connect(self.juego.actu_pantalla)
-            self.juego.mensaje.connect(self.mandar_mensaje)
+            self.juego.mensaje.connect(lambda msg: self.menu.mand_msg_clien(msg))
         self.setCentralWidget(self.juego)
         self.juego.setFocus()
 
-    def mandar_mensaje(self, msg):
-        self.mensaje.emit(msg)
+    def recibir_mensaje_servidor(self, msg):
+        self.juego.recibir(msg)
+
+    def recibir_mensaje_cliente(self, msg):
+        self.juego.recibir(msg)
 
     def volver_menu(self):
-        # Guardar referencias a conexiones activas
-        if hasattr(self, 'menu'):
-            if hasattr(self.menu, 'conexion_s') and self.menu.conexion_s:
-                self.conexion_servidor = self.menu.conexion_s
-                self.hilo_servidor = self.menu.hilo_servidor_man
-
-            if hasattr(self.menu, 'conexion_c') and self.menu.conexion_c:
-                self.conexion_cliente = self.menu.conexion_c
-                self.hilo_cliente = self.menu.hilo_cliente
-
-
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
+        self.menu.pantalla.connect(self.recibir_mensaje_cliente)
+        self.menu.posicion.connect(self.recibir_mensaje_servidor)
 
-        # Restaurar conexiones si existían
-        if self.conexion_servidor:
-            self.menu.conexion_s = self.conexion_servidor
-            self.menu.hilo_servidor_man = self.hilo_servidor
-
-        if self.conexion_cliente:
-            self.menu.conexion_c = self.conexion_cliente
-            self.menu.hilo_cliente = self.hilo_cliente
 
 app = QApplication(sys.argv)
 win = MainWindow()
