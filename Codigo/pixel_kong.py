@@ -18,6 +18,7 @@ class JuegoWidget_servidor(QWidget):
         self.app_window = app_window
         self.nombre = nombre
         self.rival = rival
+        self.contador = 0
 
         # --- recursos ---
         self.pm_fondo = cargar_imagen("fondo.png", WINDOW_W, WINDOW_H)
@@ -219,8 +220,11 @@ class JuegoWidget_servidor(QWidget):
         self.jy = min(self.jy, WINDOW_H - self.j_h)
 
         self.update()
-
-        self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
+        if self.contador:
+            self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
+            self.contador = 0
+        else:
+            self.contador = 1
 
         # Mover obstáculos
         for obs in self.obstaculos:
@@ -237,19 +241,27 @@ class JuegoWidget_servidor(QWidget):
                     self.obstaculos.remove(obs)
 
             # Colisiones y caida de obstáculos
+        c = 0
         for obs in self.obstaculos[:]:
             obs_rect = QRect(int(obs["x"]), int(obs["y"]), 28, 28)
             if pj_rect.intersects(obs_rect) and not self.inmune:
                 self.perder_vida(self.nombre)
                 self.obstaculos.remove(obs)
+                self.mensaje.emit(f"remobs%{c}")
                 break
+            c += 1
 
             # Colisiones con power-ups
+        c = 0
         for p in self.powerups[:]:
             p_rect = QRect(int(p["x"]), int(p["y"]), 28, 28)
             if pj_rect.intersects(p_rect):
                 self.aplicar_powerup(p["tipo"])
+                if p["tipo"] == "lento":
+                    self.mensaje.emit("lento")
                 self.powerups.remove(p)
+                self.mensaje.emit(f"rempow%{c}")
+            c += 1
 
             # Subir de nivel
         e_rect = QRect(120, 50, 20, 20)
@@ -329,10 +341,14 @@ class JuegoWidget_servidor(QWidget):
         partes = msg.split("%")
         if partes[0] == "pos":
             self.posicion_j2(msg)
-        elif partes[0] == "lento":
-            self.aplicar_powerup(partes[0])
         elif partes[0] == "normal":
             self.restaurar_velocidades()
+        elif partes[0] == "lento":
+            self.aplicar_powerup(partes[0])
+        elif partes[0] == "remobs":
+            self.obstaculos.pop(int(partes[1]))
+        elif partes[0] == "rempow":
+            self.powerups.pop(int(partes[1]))
         elif partes[0] == "ganador":
             self.subir_nivel(self.rival)
 
@@ -501,7 +517,7 @@ class JuegoWidget_cliente(QWidget):
         return False
 
     def bucle(self):
-        # Movimiento horizontal
+            # Movimiento horizontal
         if self.key_left:
             self.jx -= 4
         if self.key_right:
@@ -511,7 +527,7 @@ class JuegoWidget_cliente(QWidget):
         self.jvy += self.gravedad
         self.jy += self.jvy
 
-        # Colisión con plataformas
+            # Colisión con plataformas
         on_platform = False
         pj_rect = QRect(int(self.jx), int(self.jy), self.j_w, self.j_h)
         for plat in self.plataformas:
@@ -552,19 +568,27 @@ class JuegoWidget_cliente(QWidget):
                     self.obstaculos.remove(obs)
 
             # Colisiones y caida de obstáculos
+        c = 0
         for obs in self.obstaculos[:]:
             obs_rect = QRect(int(obs["x"]), int(obs["y"]), 28, 28)
             if pj_rect.intersects(obs_rect) and not self.inmune:
                 self.perder_vida(self.nombre)
                 self.obstaculos.remove(obs)
+                self.mensaje.emit(f"remobs%{c}")
                 break
+            c += 1
 
             # Colisiones con power-ups
+        c = 0
         for p in self.powerups[:]:
             p_rect = QRect(int(p["x"]), int(p["y"]), 28, 28)
             if pj_rect.intersects(p_rect):
                 self.aplicar_powerup(p["tipo"])
+                if p["tipo"] == "lento":
+                    self.mensaje.emit("lento")
                 self.powerups.remove(p)
+                self.mensaje.emit(f"rempow%{c}")
+            c += 1
 
             # Subir de nivel
         e_rect = QRect(120, 50, 20, 20)
@@ -643,17 +667,20 @@ class JuegoWidget_cliente(QWidget):
         partes = msg.split("%")
         if partes[0] == "pos":
             self.posicion_j2(msg)
+        elif partes[0] == "normal":
+            self.restaurar_velocidades()
         elif partes[0] == "obs":
             self.generar_obstaculo(partes[1])
         elif partes[0] == "pow":
             self.generar_powerup(msg)
         elif partes[0] == "lento":
             self.aplicar_powerup(partes[0])
-        elif partes[0] == "normal":
-            self.restaurar_velocidades()
+        elif partes[0] == "remobs":
+            self.obstaculos.pop(int(partes[1]))
+        elif partes[0] == "rempow":
+            self.powerups.pop(int(partes[1]))
         elif partes[0] == "ganador":
             self.subir_nivel(self.rival)
-
 
 # ---------- VENTANA PRINCIPAL ----------
 class MainWindow(QMainWindow):
@@ -685,7 +712,6 @@ class MainWindow(QMainWindow):
             self.juego.mensaje.connect(lambda msg: self.mand_msg_serv(msg))
         else:
             self.juego = JuegoWidget_cliente(self, nombre, rival)
-            self.dlg.accept()
             self.juego.mensaje.connect(lambda msg: self.mand_msg_clien(msg))
         self.setCentralWidget(self.juego)
         self.juego.setFocus()
@@ -701,12 +727,12 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.menu)
 
     def abrir_fachada_servidor(self):
-        dlg = QDialog(self)
-        dlg.setStyleSheet("color: white;")
-        dlg.setWindowTitle("Crear sala")
-        dlg.setFixedSize(360,220)
+        self.dlg_serv = QDialog(self)
+        self.dlg_serv.setStyleSheet("color: white;")
+        self.dlg_serv.setWindowTitle("Crear sala")
+        self.dlg_serv.setFixedSize(360,220)
 
-        form = QFormLayout(dlg)
+        form = QFormLayout(self.dlg_serv)
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         lbl_ip = QLabel()
         lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
@@ -714,13 +740,12 @@ class MainWindow(QMainWindow):
         self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
         btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
-        btn.clicked.connect(dlg.accept)
         self.iniciar_hilo_rec_servidor()
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", lbl_ip)
         form.addRow(self.lbl_cliente)
         form.addRow(btn)
-        dlg.exec()
+        self.dlg_serv.exec()
 
     def iniciar_hilo_rec_servidor(self):
         self.hilo_servidor_man = QThread()
@@ -741,22 +766,20 @@ class MainWindow(QMainWindow):
             return
         self.jugador = jugador
         self.iniciar_juego(jugador, self.nombre_contrario , rol)
+        self.dlg_serv.accept()
+
 
     def escucha_serv(self, msg):
         if msg[:8] == "CONEXION":
             self.nombre_contrario = msg[9:]
             return
-        partes = msg.split("%")
-        if partes[0] in ["pos", "obs", "pow", "lento", "normal", "ganador"]:
-            self.juego.recibir(msg)
+        self.juego.recibir(msg)
 
     def escucha_cliente(self, msg):
         if msg[:8] == "CONEXION":
             self.nombre_contrario = msg[9:]
             return
-        partes = msg.split("%")
-        if partes[0] in ["pos", "obs", "pow", "lento", "normal", "ganador"]:
-            self.juego.recibir(msg)
+        self.juego.recibir(msg)
 
     def mand_msg_serv(self, msg):
         self.conexion_s.mandar_servidor(msg)
@@ -768,11 +791,11 @@ class MainWindow(QMainWindow):
         self.lbl_cliente.setText(mensaje)
 
     def abrir_fachada_cliente(self):
-        self.dlg = QDialog(self)
-        self.dlg.setStyleSheet("color: white;")
-        self.dlg.setWindowTitle("Crear/Unirse a sala")
-        self.dlg.setFixedSize(360,220)
-        form = QFormLayout(self.dlg)
+        self.dlg_cliente = QDialog(self)
+        self.dlg_cliente.setStyleSheet("color: white;")
+        self.dlg_cliente.setWindowTitle("Crear/Unirse a sala")
+        self.dlg_cliente.setFixedSize(360,220)
+        form = QFormLayout(self.dlg_cliente)
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
         self.lbl_cliente = QLabel("Esperando conexion...")
@@ -782,7 +805,7 @@ class MainWindow(QMainWindow):
         form.addRow("IP:", txt_ip)
         form.addRow(self.lbl_cliente)
         form.addRow(self.btn)
-        self.dlg.exec()
+        self.dlg_cliente.exec()
 
     def iniciar_hilo_rec_cliente(self, nombre, ip):
         self.hilo_cliente = QThread()
@@ -804,6 +827,7 @@ class MainWindow(QMainWindow):
         self.iniciar_hilo_rec_cliente(nombre, ip)
 
     def iniciar_inicio(self):
+        self.dlg_cliente.accept()
         self.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
 
     def error(self, error):
