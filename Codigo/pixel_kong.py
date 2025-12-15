@@ -1,10 +1,14 @@
 import sys, random
-from PySide6.QtCore import Qt, QTimer, QRect, Signal
+import socket
+
+from PySide6.QtCore import Qt, QTimer, QRect, Signal, QThread
 from PySide6.QtGui import QPainter, QColor, QFont
-from PySide6.QtWidgets import QApplication, QMainWindow, QWidget,QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QMessageBox, QDialog, QFormLayout, QLineEdit, QLabel, \
+    QPushButton
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from Menu import MenuWidget
 from Funciones import cargar_imagen, ASSETS, WINDOW_W, WINDOW_H
+from Workers import Conexion_serv, Conexion_clien
 
 # ---------- JUEGO COMPLETO ----------
 class JuegoWidget_servidor(QWidget):
@@ -216,7 +220,7 @@ class JuegoWidget_servidor(QWidget):
 
         self.update()
 
-        self.mensaje.emit(f"pos{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
+        self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
 
         # Mover obstáculos
         for obs in self.obstaculos:
@@ -242,7 +246,7 @@ class JuegoWidget_servidor(QWidget):
 
             # Colisiones con power-ups
         for p in self.powerups[:]:
-            p_rect = QRect(p["x"], p["y"], 28, 28)
+            p_rect = QRect(int(p["x"]), int(p["y"]), 28, 28)
             if pj_rect.intersects(p_rect):
                 self.aplicar_powerup(p["tipo"])
                 self.powerups.remove(p)
@@ -343,8 +347,8 @@ class JuegoWidget_cliente(QWidget):
 
         # --- recursos ---
         self.pm_fondo = cargar_imagen("fondo.png", WINDOW_W, WINDOW_H)
-        self.pm_mario = cargar_imagen("mario.png", 30, 30)
-        self.pm_rival = cargar_imagen("mario2.png", 30, 30)
+        self.pm_mario = cargar_imagen("mario2.png", 30, 30)
+        self.pm_rival = cargar_imagen("mario.png", 30, 30)
         self.estrella = cargar_imagen("estrella.png", 20, 20)
         self.pm_barril = cargar_imagen("barril.png", 25, 25)
         self.pm_cascara = cargar_imagen("cascara.png", 25, 25)
@@ -405,6 +409,10 @@ class JuegoWidget_cliente(QWidget):
         self.audio_player.setAudioOutput(self.aout)
         ruta_choque = ASSETS / "choque.mp3"
         self.ruta_choque = ruta_choque if ruta_choque.exists() else None
+
+        self.timer_power_aux = QTimer(self)
+        self.timer_power_aux.setSingleShot(True)
+        self.timer_power_aux.timeout.connect(self.restaurar_velocidades)
 
     def construir_nivel(self):
         self.plataformas = [
@@ -527,7 +535,7 @@ class JuegoWidget_cliente(QWidget):
 
         self.update()
 
-        self.mensaje.emit(f"pos{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
+        self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
 
         # Mover obstáculos
         for obs in self.obstaculos:
@@ -553,7 +561,7 @@ class JuegoWidget_cliente(QWidget):
 
             # Colisiones con power-ups
         for p in self.powerups[:]:
-            p_rect = QRect(p["x"], p["y"], 28, 28)
+            p_rect = QRect(int(p["x"]), int(p["y"]), 28, 28)
             if pj_rect.intersects(p_rect):
                 self.aplicar_powerup(p["tipo"])
                 self.powerups.remove(p)
@@ -655,16 +663,30 @@ class MainWindow(QMainWindow):
         self.setFixedSize(WINDOW_W, WINDOW_H)
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
-        self.menu.pantalla.connect(self.recibir_mensaje_cliente)
-        self.menu.posicion.connect(self.recibir_mensaje_servidor)
+        self.menu.jugador.connect(self.recibir_jugador)
+        self.juego = None
+        self.hilo_servidor = None
+        self.hilo_cliente = None
+        self.jugador = "Carlos"
+        self.nombre_contrario = "Julieta"
+        self.setStyleSheet("background: black;")
+
+
+    def recibir_jugador(self, jugador):
+        if jugador == "SERVIDOR":
+            self.abrir_fachada_servidor()
+        else:
+            self.abrir_fachada_cliente()
 
     def iniciar_juego(self, nombre, rival, rol):
         if rol == "SERVIDOR":
             self.juego = JuegoWidget_servidor(self, nombre, rival)
-            self.juego.mensaje.connect(lambda msg: self.menu.mand_msg_serv(msg))
+            self.mand_msg_serv("INICIO")
+            self.juego.mensaje.connect(lambda msg: self.mand_msg_serv(msg))
         else:
             self.juego = JuegoWidget_cliente(self, nombre, rival)
-            self.juego.mensaje.connect(lambda msg: self.menu.mand_msg_clien(msg))
+            self.dlg.accept()
+            self.juego.mensaje.connect(lambda msg: self.mand_msg_clien(msg))
         self.setCentralWidget(self.juego)
         self.juego.setFocus()
 
@@ -677,8 +699,115 @@ class MainWindow(QMainWindow):
     def volver_menu(self):
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
-        self.menu.pantalla.connect(self.recibir_mensaje_cliente)
-        self.menu.posicion.connect(self.recibir_mensaje_servidor)
+
+    def abrir_fachada_servidor(self):
+        dlg = QDialog(self)
+        dlg.setStyleSheet("color: white;")
+        dlg.setWindowTitle("Crear sala")
+        dlg.setFixedSize(360,220)
+
+        form = QFormLayout(dlg)
+        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
+        lbl_ip = QLabel()
+        lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
+        #self.lbl_cliente = QLabel("CONEXION, ya se puede iniciar la partida")
+        self.lbl_cliente = QLabel("Esperando conexion...")
+        btn = QPushButton("INICIAR")
+        btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
+        btn.clicked.connect(dlg.accept)
+        self.iniciar_hilo_rec_servidor()
+        form.addRow("Tu nombre:", txt_nombre)
+        form.addRow("IP:", lbl_ip)
+        form.addRow(self.lbl_cliente)
+        form.addRow(btn)
+        dlg.exec()
+
+    def iniciar_hilo_rec_servidor(self):
+        self.hilo_servidor_man = QThread()
+        self.conexion_s = Conexion_serv(self.jugador)
+        self.conexion_s.moveToThread(self.hilo_servidor_man)
+        self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
+        self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
+        self.conexion_s.mensaje.connect(self.escucha_serv)
+        self.conexion_s.error.connect(self.error)
+        self.hilo_servidor_man.start()
+
+    def verificacion_serv(self, jugador, texto, rol):
+        if not jugador:
+            QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar")
+            return
+        if texto != "CONEXION, ya se puede iniciar la partida":
+            QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
+            return
+        self.jugador = jugador
+        self.iniciar_juego(jugador, self.nombre_contrario , rol)
+
+    def escucha_serv(self, msg):
+        if msg[:8] == "CONEXION":
+            self.nombre_contrario = msg[9:]
+            return
+        partes = msg.split("%")
+        if partes[0] in ["pos", "obs", "pow", "lento", "normal", "ganador"]:
+            self.juego.recibir(msg)
+
+    def escucha_cliente(self, msg):
+        if msg[:8] == "CONEXION":
+            self.nombre_contrario = msg[9:]
+            return
+        partes = msg.split("%")
+        if partes[0] in ["pos", "obs", "pow", "lento", "normal", "ganador"]:
+            self.juego.recibir(msg)
+
+    def mand_msg_serv(self, msg):
+        self.conexion_s.mandar_servidor(msg)
+
+    def mand_msg_clien(self, msg):
+        self.conexion_c.cliente_man(msg)
+
+    def cambiar_lbl(self, mensaje):
+        self.lbl_cliente.setText(mensaje)
+
+    def abrir_fachada_cliente(self):
+        self.dlg = QDialog(self)
+        self.dlg.setStyleSheet("color: white;")
+        self.dlg.setWindowTitle("Crear/Unirse a sala")
+        self.dlg.setFixedSize(360,220)
+        form = QFormLayout(self.dlg)
+        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
+        txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
+        self.lbl_cliente = QLabel("Esperando conexion...")
+        self.btn = QPushButton("INICIAR")
+        self.btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
+        form.addRow("Tu nombre:", txt_nombre)
+        form.addRow("IP:", txt_ip)
+        form.addRow(self.lbl_cliente)
+        form.addRow(self.btn)
+        self.dlg.exec()
+
+    def iniciar_hilo_rec_cliente(self, nombre, ip):
+        self.hilo_cliente = QThread()
+        self.conexion_c = Conexion_clien(ip, nombre)
+        self.conexion_c.moveToThread(self.hilo_cliente)
+        self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
+        self.conexion_c.mensaje.connect(self.escucha_cliente)
+        self.conexion_c.iniciar_juego.connect(self.iniciar_inicio)
+        self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
+        self.conexion_c.error.connect(self.error)
+        self.hilo_cliente.start()
+
+    def verificacion_cliente(self, nombre, ip):
+        if not nombre or not ip:
+            QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
+            return
+        self.jugador = nombre
+        self.btn.setDisabled(True)
+        self.iniciar_hilo_rec_cliente(nombre, ip)
+
+    def iniciar_inicio(self):
+        self.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
+
+    def error(self, error):
+        print("hubo un error", error)
 
 
 app = QApplication(sys.argv)

@@ -1,27 +1,18 @@
-import threading
-
-from PySide6.QtCore import Qt, QUrl, QThread, Signal
+from PySide6.QtCore import Qt, QUrl, Signal
 from PySide6.QtGui import QFont, QFontDatabase
-from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton, QDialog, \
-    QFormLayout, QLineEdit, QMessageBox, QListWidget, QHBoxLayout
+from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton, QDialog, QListWidget, QHBoxLayout
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
-from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H, RECORDS_FILE
-import socket
-from Workers import Conexion_serv, Conexion_clien
+from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H
 
 class MenuWidget(QWidget):
-    pantalla = Signal(str)
-    posicion = Signal(str)
+    jugador = Signal(str)
     def __init__(self, app_window):
         super().__init__()
         self.app_window = app_window
         self.init_ui()
         self.init_audio()
-        self.hilo_servidor = None
-        self.hilo_cliente = None
         self.lbl_cliente = None
         self.nombre_contrario = ""
-        self.jugador = ""
 
     def init_ui(self):
         self.setFixedSize(WINDOW_W, WINDOW_H)
@@ -90,11 +81,11 @@ class MenuWidget(QWidget):
         txt_pregunta = QLabel("Vas a ser el Servidor o el cliente?")
 
         btn_servidor = QPushButton("Servidor")
-        btn_servidor.clicked.connect(self.abrir_fachada_servidor)
+        btn_servidor.clicked.connect(lambda: self.jugador.emit("SERVIDOR"))
         btn_servidor.clicked.connect(dlg.accept)
 
         btn_cliente = QPushButton("Cliente")
-        btn_cliente.clicked.connect(self.abrir_fachada_cliente)
+        btn_cliente.clicked.connect(lambda: self.jugador.emit("CLIENTE"))
         btn_cliente.clicked.connect(dlg.accept)
 
         cbv.addWidget(txt_pregunta)
@@ -103,141 +94,20 @@ class MenuWidget(QWidget):
         cbv.addLayout(cbh)
         dlg.exec()
 
-    def abrir_fachada_servidor(self):
-        dlg = QDialog(self)
-        dlg.setStyleSheet("color: white;")
-        dlg.setWindowTitle("Crear sala")
-        dlg.setFixedSize(360,220)
-
-        form = QFormLayout(dlg)
-        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
-        lbl_ip = QLabel()
-        lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
-        #self.lbl_cliente = QLabel("CONEXION, ya se puede iniciar la partida")
-        self.lbl_cliente = QLabel("Esperando conexion...")
-        btn = QPushButton("INICIAR")
-        btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
-        self.iniciar_hilo_rec_servidor()
-        form.addRow("Tu nombre:", txt_nombre)
-        form.addRow("IP:", lbl_ip)
-        form.addRow(self.lbl_cliente)
-        form.addRow(btn)
-        dlg.exec()
-
-    def iniciar_hilo_rec_servidor(self):
-        self.hilo_servidor_man = QThread()
-        self.conexion_s = Conexion_serv(self.jugador)
-        self.conexion_s.moveToThread(self.hilo_servidor_man)
-        self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
-        self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_s.mensaje.connect(self.escucha_serv)
-        self.conexion_s.error.connect(self.error)
-        self.hilo_servidor_man.start()
-
-    def verificacion_serv(self, jugador, texto, rol):
-        if not jugador:
-            QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar")
-            return
-        if texto != "CONEXION, ya se puede iniciar la partida":
-            QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
-            return
-        self.jugador = jugador
-        self.iniciar_juego(jugador, self.nombre_contrario , rol)
-
-    def escucha_serv(self, msg):
-        if msg[:8] == "CONEXION":
-            self.nombre_contrario = msg[9:]
-            return
-        print(f"[SERVIDOR] Emitiendo señal posicion con: {msg}")
-        self.posicion.emit(msg)
-
-    def escucha_cliente(self, msg):
-        if msg[:8] == "CONEXION":
-            self.nombre_contrario = msg[9:]
-            return
-        print(f"[CLIENTE] Emitiendo señal pantalla con: {msg}")
-        self.pantalla.emit(msg)
-
-    def mand_msg_serv(self, msg):
-        self.conexion_s.mandar_servidor(msg)
-
-    def mand_msg_clien(self, msg):
-        self.conexion_c.cliente_man(msg)
-
-    def cambiar_lbl(self, mensaje):
-        self.lbl_cliente.setText(mensaje)
-
-    def abrir_fachada_cliente(self):
-        dlg = QDialog(self)
-        dlg.setStyleSheet("color: white;")
-        dlg.setWindowTitle("Crear/Unirse a sala")
-        dlg.setFixedSize(360,220)
-        form = QFormLayout(dlg)
-        txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
-        txt_ip = QLineEdit(); txt_ip.setPlaceholderText("IP (rival)")
-        self.lbl_cliente = QLabel("Esperando conexion...")
-        self.btn = QPushButton("INICIAR")
-        self.btn.clicked.connect(lambda: self.verificacion_cliente(txt_nombre.text(), txt_ip.text()))
-        form.addRow("Tu nombre:", txt_nombre)
-        form.addRow("IP:", txt_ip)
-        form.addRow(self.lbl_cliente)
-        form.addRow(self.btn)
-        dlg.exec()
-
-    def iniciar_hilo_rec_cliente(self, nombre, ip):
-        self.hilo_cliente = QThread()
-        self.conexion_c = Conexion_clien(ip, nombre)
-        self.conexion_c.moveToThread(self.hilo_cliente)
-        self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
-        self.conexion_c.mensaje.connect(self.escucha_cliente)
-        self.conexion_c.iniciar_juego.connect(self.iniciar_inicio)
-        self.conexion_c.cliente_conectado.connect(self.cambiar_lbl)
-        self.conexion_c.error.connect(self.error)
-        self.hilo_cliente.start()
-
-    def verificacion_cliente(self, nombre, ip):
-        if not nombre or not ip:
-            QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
-            return
-        self.jugador = nombre
-        self.btn.setDisabled(True)
-        self.iniciar_hilo_rec_cliente(nombre, ip)
-
-    def iniciar_inicio(self):
-        self.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
-
-    def iniciar_juego(self, jugador, rival, rol):
-        if self.player:
-            self.player.stop()
-        self.app_window.iniciar_juego(jugador, rival, rol)
-        if rol == "SERVIDOR":
-            self.mand_msg_serv("INICIO")
-
     def abrir_records(self):
-        dlg = QDialog(self)
-        dlg.setWindowTitle("RECORDS - PIXEL KONG")
-        dlg.setFixedSize(480,420)
-        v = QVBoxLayout(dlg)
-        lista = QListWidget()
-        regs = cargar_records()
-        if not regs:
+         dlg = QDialog(self)
+         dlg.setWindowTitle("RECORDS - PIXEL KONG")
+         dlg.setFixedSize(480,420)
+         v = QVBoxLayout(dlg)
+         lista = QListWidget()
+         regs = cargar_records()
+         if not regs:
             lista.addItem("Aún no hay records.")
-        else:
-            regs_sorted = sorted(regs, key=lambda r: r.get("puntos",0), reverse=True)
-            for r in regs_sorted[:100]:
-                lista.addItem(f"{r.get('nombre','?')} - {r.get('puntos',0)} pts - Nivel {r.get('nivel',1)}")
-        v.addWidget(lista)
-        btn = QPushButton("Cerrar"); btn.clicked.connect(dlg.accept); v.addWidget(btn)
-        dlg.exec()
+         else:
+             regs_sorted = sorted(regs, key=lambda r: r.get("puntos",0), reverse=True)
+             for r in regs_sorted[:100]:
+                 lista.addItem(f"{r.get('nombre','?')} - {r.get('puntos',0)} pts - Nivel {r.get('nivel',1)}")
+         v.addWidget(lista)
+         btn = QPushButton("Cerrar"); btn.clicked.connect(dlg.accept); v.addWidget(btn)
+         dlg.exec()
 
-    def error(self, error):
-        print(f"ocurrio un error: {error}")
-
-    def closeEvent(self, event):
-        if not self.hilo_cliente:
-            self.hilo_cliente.quit()
-            self.hilo_cliente.wait()
-
-        if not self.hilo_servidor:
-            self.hilo_servidor.quit()
-            self.hilo_servidor.wait()

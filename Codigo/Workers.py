@@ -104,7 +104,6 @@ class Conexion_clien(QObject):
                     # Separar el primer mensaje completo
                     msg, self.buffer = self.buffer.split('\n', 1)
                     if msg:  # Ignorar líneas vacías
-
                         if msg == "INICIO":
                             self.iniciar_juego.emit()
                         else:
