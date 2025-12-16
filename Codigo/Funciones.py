@@ -9,7 +9,7 @@ WINDOW_W, WINDOW_H = 960, 640
 DB_FILE = Path(__file__).parent / "pixel_kong.db"
 ASSETS.mkdir(exist_ok=True)
 
-def cargar_imagen(nombre, w=None, h=None):
+def cargar_imagen(nombre, w=None, h=None): #para cargar mas facil las imagenes
     ruta = ASSETS / nombre
     if ruta.exists():
         pm = QPixmap(str(ruta))
@@ -24,7 +24,6 @@ def cargar_imagen(nombre, w=None, h=None):
 # ========== FUNCIONES DE BASE DE DATOS SQLite ==========
 
 def init_db():
-    """Crea la base de datos y la tabla si no existen"""
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
 

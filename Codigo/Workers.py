@@ -6,7 +6,7 @@ from PySide6.QtCore import QObject, Signal
 class Conexion_serv(QObject):
     cliente_conectado = Signal(str)
     error = Signal(str)
-    mensaje = Signal(str)
+    mensaje = Signal(str) #para la comunicacion
     conexion_cerrada = Signal()
 
     def __init__(self, nombre):
@@ -14,7 +14,7 @@ class Conexion_serv(QObject):
         self.socket_servidor = socket.socket()
         self.conexion = None
         self.nombre = nombre
-        self.buffer = ""
+        self.buffer = "" #por si los mensajes se envian en partes o juntos
         self.conectado = True
 
     def iniciar_servidor(self):
@@ -33,16 +33,16 @@ class Conexion_serv(QObject):
                 except:
                     break
 
-            if self.conexion:
+            if self.conexion: #si se conecto
                 self.conexion.send(f"CONEXION\n".encode('utf-8'))
                 self.cliente_conectado.emit("CONEXION, ya se puede iniciar la partida")
-                Thread(target=self.escucha_servidor, daemon=True).start()
+                Thread(target=self.escucha_servidor, daemon=True).start() #hilo demonio para no tener que "matarlo"
             else:
                 self.error.emit("No se pudo establecer conexión")
 
         except Exception as e:
             if self.socket_servidor:
-                self.socket_servidor.close()
+                self.socket_servidor.close() #cerrar la conexion
             self.error.emit(str(e))
 
     def mandar_servidor(self, msg):
@@ -50,7 +50,7 @@ class Conexion_serv(QObject):
             return
 
         try:
-            msg = msg + "\n"
+            msg = msg + "\n" #salto de linea para que el buffer lo entienda como un mensaje
             self.conexion.send(msg.encode('utf-8'))
         except Exception as e:
             self.conectado = False
@@ -78,18 +78,15 @@ class Conexion_serv(QObject):
                             self.mensaje.emit(msg)
 
                 except socket.timeout:
-                    continue  # Timeout normal, continuar escuchando
+                    continue  # timeout normal, continuar escuchando
                 except:
-                    break  # Error real
+                    break  # error real
 
         except:
             pass
         finally:
-            self.conectado = False
-            if self.conexion:
-                self.conexion.close()
-            if self.socket_servidor:
-                self.socket_servidor.close()
+            #se cierra toda conexion
+            self.cerrar()
             self.error.emit("Cliente desconectado")
             self.conexion_cerrada.emit()
 
@@ -104,7 +101,7 @@ class Conexion_serv(QObject):
 class Conexion_clien(QObject):
     cliente_conectado = Signal(str)
     error = Signal(str)
-    mensaje = Signal(str)
+    mensaje = Signal(str) #para toda la comunicacion
     iniciar_juego = Signal()
     conexion_cerrada = Signal()
 
@@ -113,15 +110,15 @@ class Conexion_clien(QObject):
         self.socket_cliente = None
         self.nombre = nombre
         self.ip = ip
-        self.buffer = ""
+        self.buffer = "" #por si los mensajes se envian por partes o juntos
         self.conectado = True
 
     def iniciar_cliente_rec(self):
         try:
             self.socket_cliente = socket.socket()
-            self.socket_cliente.settimeout(5)  # Timeout para conexión
+            self.socket_cliente.settimeout(5)  # timeout para conexión
             self.socket_cliente.connect((self.ip, 5050))
-            self.socket_cliente.settimeout(0.5)  # Timeout más corto para recv
+            self.socket_cliente.settimeout(0.5)  # timeout más corto para recv
 
             msg = self.socket_cliente.recv(1024).decode('utf-8')
             self.buffer += msg
@@ -131,7 +128,7 @@ class Conexion_clien(QObject):
                 if msg[:8] == "CONEXION":
                     self.cliente_man(f"CONEXION:{self.nombre}")
                     self.cliente_conectado.emit(msg + " Esperando a iniciar la partida")
-                    Thread(target=self.escucha_cliente, daemon=True).start()
+                    Thread(target=self.escucha_cliente, daemon=True).start() #hilo demonio para no tener que "matarlo"
 
         except socket.timeout:
             self.error.emit("Timeout de conexión")
@@ -185,9 +182,7 @@ class Conexion_clien(QObject):
             msg = msg + "\n"
             self.socket_cliente.send(msg.encode('utf-8'))
         except Exception as e:
-            self.conectado = False
-            if self.socket_cliente:
-                self.socket_cliente.close()
+            self.cerrar()
             self.error.emit("ERROR_SERVIDOR_CAIDO")
 
     def cerrar(self):

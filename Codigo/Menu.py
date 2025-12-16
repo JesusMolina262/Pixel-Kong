@@ -31,7 +31,7 @@ class MenuWidget(QWidget):
         v.setContentsMargins(220, 130, 220, 130)
         v.setSpacing(18)
 
-        font_id = QFontDatabase.addApplicationFont(f"{ASSETS}/arcadeclassic.regular.ttf")
+        font_id = QFontDatabase.addApplicationFont(f"{ASSETS}/arcadeclassic.regular.ttf") #fuente de pixeles
         font_families = QFontDatabase.applicationFontFamilies(font_id)
         pixel_font_family = font_families[0]
         pixel_font = QFont(pixel_font_family)

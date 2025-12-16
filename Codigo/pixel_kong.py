@@ -12,7 +12,7 @@ from Workers import Conexion_serv, Conexion_clien
 
 # ---------- JUEGO COMPLETO ----------
 class JuegoWidget_servidor(QWidget):
-    mensaje = Signal(str)
+    mensaje = Signal(str) #para la comunicacion
     def __init__(self, app_window, nombre, rival):
         super().__init__()
         self.app_window = app_window
@@ -73,7 +73,7 @@ class JuegoWidget_servidor(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.bucle)
-        self.timer.start(28)
+        self.timer.start(28) #tasa de refresco
 
         # --- timers adicionales ---
         self.spawn_timer = QTimer(self)
@@ -134,8 +134,8 @@ class JuegoWidget_servidor(QWidget):
         painter.setPen(QColor("black"))
         painter.drawPixmap(0, 0, self.pm_fondo)
 
-        painter.drawPixmap(int(self.jx), int(self.jy), self.pm_mario)
-        painter.drawPixmap(int(self.j2x), int(self.j2y), self.pm_rival)
+        painter.drawPixmap(int(self.jx), int(self.jy), self.pm_mario) #jugador
+        painter.drawPixmap(int(self.j2x), int(self.j2y), self.pm_rival) #rival
 
             # Dibujar plataformas
         painter.setBrush(QColor(100, 100, 100))
@@ -165,10 +165,10 @@ class JuegoWidget_servidor(QWidget):
         painter.setPen(Qt.white)
         painter.drawText(10, 30, f"Jugador 1:{self.nombre}  Puntos: {self.puntos}  Nivel: {self.nivel}")
         for i in range(self.vidas):
-            painter.drawPixmap(10 + i * 30, 40, self.pm_vida)
+            painter.drawPixmap(10 + i * 30, 40, self.pm_vida) #Jugador
         painter.drawText(500, 30, f"Jugador 1:{self.rival}  Puntos: {self.puntos_j2}")
         for i in range(self.vidas_j2):
-            painter.drawPixmap(500 + i * 30, 40, self.pm_vida)
+            painter.drawPixmap(500 + i * 30, 40, self.pm_vida)#Rival
 
     def obstaculo_en_plataforma(self, obs):
         for plat in self.plataformas:
@@ -221,7 +221,7 @@ class JuegoWidget_servidor(QWidget):
         self.jy = min(self.jy, WINDOW_H - self.j_h)
 
         self.update()
-        if self.contador:
+        if self.contador: #cada dos veces enviar los datos
             self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
             self.contador = 0
         else:
@@ -242,7 +242,7 @@ class JuegoWidget_servidor(QWidget):
                     self.obstaculos.remove(obs)
 
             # Colisiones y caida de obstáculos
-        c = 0
+        c = 0 #para eliminar en la otra pantalla
         for obs in self.obstaculos[:]:
             obs_rect = QRect(int(obs["x"]), int(obs["y"]), 28, 28)
             if pj_rect.intersects(obs_rect) and not self.inmune:
@@ -253,7 +253,7 @@ class JuegoWidget_servidor(QWidget):
             c += 1
 
             # Colisiones con power-ups
-        c = 0
+        c = 0 #para eliminar en la otra pantalla
         for p in self.powerups[:]:
             p_rect = QRect(int(p["x"]), int(p["y"]), 28, 28)
             if pj_rect.intersects(p_rect):
@@ -280,20 +280,19 @@ class JuegoWidget_servidor(QWidget):
                 # Guardamos QUIÉN GANÓ (cliente) y QUIÉN PERDIÓ (servidor)
                 guardar_record(self.rival, self.puntos_j2, self.nivel)  # Ganador
                 guardar_record(self.nombre, self.puntos, self.nivel)  # Perdedor
-
+                self.app_window.volver_menu()
                 QMessageBox.information(self, "Game Over",
                                         f"{self.nombre} perdió! {self.rival} gana!")
-                self.app_window.volver_menu()
             else:
                 self.jx, self.jy = 80, 550
         else:
             # El cliente pierde
             guardar_record(self.nombre, self.puntos, self.nivel)  # Ganador (servidor)
             guardar_record(self.rival, self.puntos_j2, self.nivel)  # Perdedor (cliente)
-
+            self.app_window.volver_menu()
             QMessageBox.information(self, "Game Over",
                                     f"{self.rival} perdió! {self.nombre} gana!")
-            self.app_window.volver_menu()
+
     def aplicar_powerup(self, tipo):
         self.puntos += 500
         if tipo == "inmune":
@@ -315,9 +314,9 @@ class JuegoWidget_servidor(QWidget):
     def restaurar_velocidades(self):
         for o in self.obstaculos:
             if o["vx"]>0:
-                o["vx"] = 2
+                o["vx"] = 2 #los que van a la derecha
             else:
-                o["vx"] = -2
+                o["vx"] = -2 #los que van a la izquierda
         self.mensaje.emit("normal")
 
     def subir_nivel(self, jugador):
@@ -378,8 +377,6 @@ class JuegoWidget_servidor(QWidget):
             self.power_timer.stop()
         if self.timer_power_aux:
             self.timer_power_aux.stop()
-
-        # Liberar audio
         if self.audio_player:
             self.audio_player.stop()
             self.audio_player.deleteLater()
@@ -387,8 +384,7 @@ class JuegoWidget_servidor(QWidget):
             self.aout.deleteLater()
 
 class JuegoWidget_cliente(QWidget):
-    mensaje = Signal(str)
-
+    mensaje = Signal(str) #para la comunicacion
     def __init__(self, app_window, nombre, rival):
         super().__init__()
         self.app_window = app_window
@@ -447,7 +443,7 @@ class JuegoWidget_cliente(QWidget):
 
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.bucle)
-        self.timer.start(28)
+        self.timer.start(28) #tasa de refresco
 
         self.setFocusPolicy(Qt.StrongFocus)
         self.setFocus()
@@ -477,14 +473,13 @@ class JuegoWidget_cliente(QWidget):
             QRect(700, 150, 40, 150)  # arriba
         ]
 
-    def generar_obstaculo(self, tipo):
-        # Barriles, cáscaras o bombas
+    def generar_obstaculo(self, tipo): #solo recibe el tipo por que siempre salen de donde mismo
         x = 0
         y = 120  # nivel superior
         vx = 2
         self.obstaculos.append({"tipo": tipo, "x": x, "y": y, "vx": vx})
 
-    def generar_powerup(self, pow):
+    def generar_powerup(self, pow): #recibe cuando el servidor lo genero
         partes = pow.split("%")
         tipo = partes[1]
         x = partes[2]
@@ -529,10 +524,10 @@ class JuegoWidget_cliente(QWidget):
         painter.setPen(Qt.white)
         painter.drawText(10, 30, f"Jugador 1:{self.nombre}  Puntos: {self.puntos}  Nivel: {self.nivel}")
         for i in range(self.vidas):
-            painter.drawPixmap(10 + i * 30, 40, self.pm_vida)
+            painter.drawPixmap(10 + i * 30, 40, self.pm_vida) #jugador
         painter.drawText(500, 30, f"Jugador 1:{self.rival}  Puntos: {self.puntos_j2}")
         for i in range(self.vidas_j2):
-            painter.drawPixmap(500 + i * 30, 40, self.pm_vida)
+            painter.drawPixmap(500 + i * 30, 40, self.pm_vida) #rival
 
     def obstaculo_en_plataforma(self, obs):
         for plat in self.plataformas:
@@ -603,7 +598,7 @@ class JuegoWidget_cliente(QWidget):
                     self.obstaculos.remove(obs)
 
             # Colisiones y caida de obstáculos
-        c = 0
+        c = 0 #para eliminar en la otra pantalla
         for obs in self.obstaculos[:]:
             obs_rect = QRect(int(obs["x"]), int(obs["y"]), 28, 28)
             if pj_rect.intersects(obs_rect) and not self.inmune:
@@ -614,7 +609,7 @@ class JuegoWidget_cliente(QWidget):
             c += 1
 
             # Colisiones con power-ups
-        c = 0
+        c = 0 #para eliminar en la otra pantalla
         for p in self.powerups[:]:
             p_rect = QRect(int(p["x"]), int(p["y"]), 28, 28)
             if pj_rect.intersects(p_rect):
@@ -640,20 +635,18 @@ class JuegoWidget_cliente(QWidget):
                 # Cliente pierde
                 guardar_record(self.rival, self.puntos_j2, self.nivel)  # Ganador (servidor)
                 guardar_record(self.nombre, self.puntos, self.nivel)  # Perdedor (cliente)
-
+                self.app_window.volver_menu()
                 QMessageBox.information(self, "Game Over",
                                         f"{self.nombre} perdió! {self.rival} gana!")
-                self.app_window.volver_menu()
             else:
                 self.jx, self.jy = 80, 550
         else:
             # Servidor pierde
             guardar_record(self.nombre, self.puntos, self.nivel)  # Ganador (cliente)
             guardar_record(self.rival, self.puntos_j2, self.nivel)  # Perdedor (servidor)
-
+            self.app_window.volver_menu()
             QMessageBox.information(self, "Game Over",
                                     f"{self.rival} perdió! {self.nombre} gana!")
-            self.app_window.volver_menu()
 
 
     def aplicar_powerup(self, tipo):
@@ -677,9 +670,9 @@ class JuegoWidget_cliente(QWidget):
     def restaurar_velocidades(self):
         for o in self.obstaculos:
             if o["vx"] > 0:
-                o["vx"] = 2
+                o["vx"] = 2 #los que van a la derecha
             else:
-                o["vx"] = -2
+                o["vx"] = -2 #los que van a la izquierda
         self.mensaje.emit("normal")
 
     def subir_nivel(self, jugador):
@@ -739,8 +732,6 @@ class JuegoWidget_cliente(QWidget):
             self.timer.stop()
         if self.timer_power_aux:
             self.timer_power_aux.stop()
-
-            # Liberar audio
         if self.audio_player:
             self.audio_player.stop()
             self.audio_player.deleteLater()
@@ -758,13 +749,13 @@ class MainWindow(QMainWindow):
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
         self.menu.jugador.connect(self.recibir_jugador)
-        self.juego = None
-        self.hilo_servidor = None
-        self.hilo_cliente = None
-        self.jugador = None
-        self.nombre_contrario = None
-        self.conexion_s = None
-        self.conexion_c = None
+        self.juego = None#------------------------
+        self.hilo_servidor = None#               |
+        self.hilo_cliente = None#                |
+        self.jugador = None#                     |-para usarse despues
+        self.nombre_contrario = None#            |
+        self.conexion_s = None#                  |
+        self.conexion_c = None#-------------------
         self.setStyleSheet("background: black; color: white;")
 
     def recibir_jugador(self, jugador):
@@ -803,7 +794,7 @@ class MainWindow(QMainWindow):
         self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
         btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
-        self.iniciar_hilo_rec_servidor()
+        self.iniciar_hilo_rec_servidor() #inicia para escuchar a los clientes
         form.addRow("Tu nombre:", txt_nombre)
         form.addRow("IP:", lbl_ip)
         form.addRow(self.lbl_cliente)
@@ -813,7 +804,7 @@ class MainWindow(QMainWindow):
     def iniciar_hilo_rec_servidor(self):
         self.hilo_servidor = QThread()
         self.conexion_s = Conexion_serv(self.jugador)
-        self.conexion_s.moveToThread(self.hilo_servidor)
+        self.conexion_s.moveToThread(self.hilo_servidor) #se mueve a otro hilo
         self.hilo_servidor.started.connect(self.conexion_s.iniciar_servidor)
         self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
         self.conexion_s.mensaje.connect(self.escucha_serv)
@@ -828,7 +819,7 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
             return
         self.jugador = jugador
-        self.mand_msg_serv(f"NOMBRE:{self.jugador}")
+        self.mand_msg_serv(f"NOMBRE:{self.jugador}") #envia su nombre al cliente
         self.iniciar_juego(jugador, self.nombre_contrario , rol)
         self.dlg_serv.accept()
 
@@ -836,7 +827,7 @@ class MainWindow(QMainWindow):
         self.juego.recibir(msg)
 
     def escucha_serv(self, msg):
-        if msg[:8] == "CONEXION":
+        if msg[:8] == "CONEXION": #"CONEXION:{nombre}"
             self.nombre_contrario = msg[9:]
             return
         self.juego.recibir(msg)
@@ -864,7 +855,7 @@ class MainWindow(QMainWindow):
     def iniciar_hilo_rec_cliente(self, nombre, ip):
         self.hilo_cliente = QThread()
         self.conexion_c = Conexion_clien(ip, nombre)
-        self.conexion_c.moveToThread(self.hilo_cliente)
+        self.conexion_c.moveToThread(self.hilo_cliente) #se mueve a otro hilo
         self.hilo_cliente.started.connect(self.conexion_c.iniciar_cliente_rec)
         self.conexion_c.mensaje.connect(self.escucha_cliente)
         self.conexion_c.iniciar_juego.connect(self.iniciar_inicio)
@@ -877,14 +868,14 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Falta algun campo", "Llena todos los campos para iniciar.")
             return
         self.jugador = nombre
-        self.btn.setDisabled(True)
+        self.btn.setDisabled(True) #Se desactiva para que no le de click mas de una vez
         self.iniciar_hilo_rec_cliente(nombre, ip)
 
     def recibir_mensaje_cliente(self, msg):
         self.juego.recibir(msg)
 
     def escucha_cliente(self, msg):
-        if msg[:6] == "NOMBRE":
+        if msg[:6] == "NOMBRE": #"NOMBRE:{nombre}
             self.nombre_contrario = msg[7:]
             return
         self.juego.recibir(msg)
@@ -900,30 +891,30 @@ class MainWindow(QMainWindow):
         self.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
 
     def error(self, error_msg):
-        # Usar QTimer.singleShot para asegurar que se ejecute en el hilo principal
+        # Usar singleShot para asegurar que se ejecute en el hilo principal
         QTimer.singleShot(0, lambda: self._manejar_error_ui(error_msg))
 
     def _manejar_error_ui(self, error_msg):
-        QMessageBox.warning(self, "Error de conexión",
-                            f"El otro jugador se ha desconectado o hubo un error.\n\nError: {error_msg}")
         self.cerrar_todo()
         self.volver_menu()
+        QMessageBox.warning(self, "Error de conexión",
+                            f"El otro jugador se ha desconectado o hubo un error.\n\nError: {error_msg}")
 
     def cerrar_todo(self):
         if self.conexion_s:
-            self.conexion_s.socket_servidor.close()
+            self.conexion_s.socket_servidor.close() #se cierra la conexion
         if self.conexion_c:
-            self.conexion_c.socket_cliente.close()
+            self.conexion_c.socket_cliente.close() #se ciera la conexion
         if self.hilo_servidor:
             try:
-                self.conexion_s.mandar_servidor("DESCONEXION")
+                self.conexion_s.mandar_servidor("DESCONEXION") #se trata de mandar un mensaje de desconexion
             except:
                 pass
             self.hilo_servidor.quit()
             self.hilo_servidor.wait()
         if self.hilo_cliente:
             try:
-                self.conexion_c.cliente_man("DESCONEXION")
+                self.conexion_c.cliente_man("DESCONEXION")#se trata de mandar un mensaje de desconexion
             except:
                 pass
             self.hilo_cliente.quit()
