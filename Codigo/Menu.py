@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushB
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from Funciones import cargar_imagen, cargar_records, ASSETS, WINDOW_W, WINDOW_H
 
+
 class MenuWidget(QWidget):
     jugador = Signal(str)
     def __init__(self, app_window):
@@ -95,8 +96,6 @@ class MenuWidget(QWidget):
         dlg.exec()
 
     def abrir_records(self):
-        from Funciones import cargar_records
-
         dlg = QDialog(self)
         dlg.setWindowTitle("RECORDS - PIXEL KONG")
         dlg.setFixedSize(480, 420)

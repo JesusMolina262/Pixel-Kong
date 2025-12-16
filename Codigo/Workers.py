@@ -73,7 +73,6 @@ class Conexion_serv(QObject):
                         msg, self.buffer = self.buffer.split('\n', 1)
                         if msg:
                             if msg == "DESCONEXION":
-                                print("Cliente solicitó desconexión")
                                 self.conectado = False
                                 break
                             self.mensaje.emit(msg)
@@ -83,8 +82,8 @@ class Conexion_serv(QObject):
                 except:
                     break  # Error real
 
-        except Exception as e:
-            print(f"Error en escucha servidor: {e}")
+        except:
+            pass
         finally:
             self.conectado = False
             if self.conexion:
@@ -157,7 +156,6 @@ class Conexion_clien(QObject):
                         msg, self.buffer = self.buffer.split('\n', 1)
                         if msg:
                             if msg == "DESCONEXION":
-                                print("Servidor solicitó desconexión")
                                 self.conectado = False
                                 break
                             elif msg == "INICIO":
@@ -170,8 +168,8 @@ class Conexion_clien(QObject):
                 except:
                     break  # Error real
 
-        except Exception as e:
-            print(f"Error en escucha cliente: {e}")
+        except:
+            pass
         finally:
             self.conectado = False
             if self.socket_cliente:

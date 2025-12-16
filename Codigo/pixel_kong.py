@@ -1,6 +1,6 @@
-import sys, random
+import random
 import socket
-
+from Funciones import guardar_record
 from PySide6.QtCore import Qt, QTimer, QRect, Signal, QThread
 from PySide6.QtGui import QPainter, QColor, QFont
 from PySide6.QtWidgets import QApplication, QMainWindow, QWidget, QMessageBox, QDialog, QFormLayout, QLineEdit, QLabel, \
@@ -131,6 +131,7 @@ class JuegoWidget_servidor(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setPen(QColor("black"))
         painter.drawPixmap(0, 0, self.pm_fondo)
 
         painter.drawPixmap(int(self.jx), int(self.jy), self.pm_mario)
@@ -266,16 +267,16 @@ class JuegoWidget_servidor(QWidget):
             # Subir de nivel
         e_rect = QRect(120, 50, 20, 20)
         if pj_rect.intersects(e_rect):
+            self.puntos += 5000
             self.mensaje.emit("ganador")
             self.subir_nivel(self.nombre)
 
 
     def perder_vida(self, jugador):
-        from Funciones import guardar_record
-
         if jugador == self.nombre:
             self.vidas -= 1
             if self.vidas <= 0:
+                self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
                 # Guardamos QUIÉN GANÓ (cliente) y QUIÉN PERDIÓ (servidor)
                 guardar_record(self.rival, self.puntos_j2, self.nivel)  # Ganador
                 guardar_record(self.nombre, self.puntos, self.nivel)  # Perdedor
@@ -363,6 +364,27 @@ class JuegoWidget_servidor(QWidget):
             self.powerups.pop(int(partes[1]))
         elif partes[0] == "ganador":
             self.subir_nivel(self.rival)
+
+    def closeEvent(self, event):
+        self.cerrar_todo()
+        event.accept()
+
+    def cerrar_todo(self):
+        if self.timer:
+            self.timer.stop()
+        if self.spawn_timer:
+            self.spawn_timer.stop()
+        if self.power_timer:
+            self.power_timer.stop()
+        if self.timer_power_aux:
+            self.timer_power_aux.stop()
+
+        # Liberar audio
+        if self.audio_player:
+            self.audio_player.stop()
+            self.audio_player.deleteLater()
+        if self.aout:
+            self.aout.deleteLater()
 
 class JuegoWidget_cliente(QWidget):
     mensaje = Signal(str)
@@ -471,6 +493,7 @@ class JuegoWidget_cliente(QWidget):
 
     def paintEvent(self, event):
         painter = QPainter(self)
+        painter.setPen(QColor("black"))
         painter.drawPixmap(0, 0, self.pm_fondo)
 
         painter.drawPixmap(int(self.jx), int(self.jy), self.pm_mario)
@@ -499,7 +522,7 @@ class JuegoWidget_cliente(QWidget):
             painter.drawPixmap(int(p["x"]), int(p["y"]), pm)
 
             # Dibujar estrella
-        painter.drawPixmap(100, 30, self.estrella)
+        painter.drawPixmap(120, 50, self.estrella)
 
             # HUD: puntos y vidas
         painter.setFont(QFont("Arial", 18))
@@ -605,16 +628,15 @@ class JuegoWidget_cliente(QWidget):
             # Subir de nivel
         e_rect = QRect(120, 50, 20, 20)
         if pj_rect.intersects(e_rect):
+            self.puntos += 5000
             self.mensaje.emit("ganador")
             self.subir_nivel(self.nombre)
 
     def perder_vida(self, jugador):
-        # Importamos la función para guardar
-        from Funciones import guardar_record
-
         if jugador == self.nombre:
             self.vidas -= 1
             if self.vidas <= 0:
+                self.mensaje.emit(f"pos%{self.jx}%{self.jy}%{self.puntos}%{self.vidas}")
                 # Cliente pierde
                 guardar_record(self.rival, self.puntos_j2, self.nivel)  # Ganador (servidor)
                 guardar_record(self.nombre, self.puntos, self.nivel)  # Perdedor (cliente)
@@ -708,6 +730,25 @@ class JuegoWidget_cliente(QWidget):
         elif partes[0] == "ganador":
             self.subir_nivel(self.rival)
 
+    def closeEvent(self, event):
+        self.cerrar_todo()
+        event.accept()
+
+    def cerrar_todo(self):
+        if self.timer:
+            self.timer.stop()
+        if self.timer_power_aux:
+            self.timer_power_aux.stop()
+
+            # Liberar audio
+        if self.audio_player:
+            self.audio_player.stop()
+            self.audio_player.deleteLater()
+        if self.aout:
+            self.aout.deleteLater()
+
+
+
 # ---------- VENTANA PRINCIPAL ----------
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -720,10 +761,11 @@ class MainWindow(QMainWindow):
         self.juego = None
         self.hilo_servidor = None
         self.hilo_cliente = None
-        self.jugador = "Carlos"
-        self.nombre_contrario = "Julieta"
-        self.setStyleSheet("background: black;")
-
+        self.jugador = None
+        self.nombre_contrario = None
+        self.conexion_s = None
+        self.conexion_c = None
+        self.setStyleSheet("background: black; color: white;")
 
     def recibir_jugador(self, jugador):
         if jugador == "SERVIDOR":
@@ -742,15 +784,11 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.juego)
         self.juego.setFocus()
 
-    def recibir_mensaje_servidor(self, msg):
-        self.juego.recibir(msg)
-
-    def recibir_mensaje_cliente(self, msg):
-        self.juego.recibir(msg)
-
     def volver_menu(self):
+        self.cerrar_todo()
         self.menu = MenuWidget(self)
         self.setCentralWidget(self.menu)
+        self.menu.jugador.connect(self.recibir_jugador)
 
     def abrir_fachada_servidor(self):
         self.dlg_serv = QDialog(self)
@@ -762,7 +800,6 @@ class MainWindow(QMainWindow):
         txt_nombre = QLineEdit(); txt_nombre.setPlaceholderText("Tu nombre")
         lbl_ip = QLabel()
         lbl_ip.setText(socket.gethostbyname(socket.gethostname()))
-        #self.lbl_cliente = QLabel("CONEXION, ya se puede iniciar la partida")
         self.lbl_cliente = QLabel("Esperando conexion...")
         btn = QPushButton("INICIAR")
         btn.clicked.connect(lambda: self.verificacion_serv(txt_nombre.text(), self.lbl_cliente.text(), "SERVIDOR"))
@@ -774,14 +811,14 @@ class MainWindow(QMainWindow):
         self.dlg_serv.exec()
 
     def iniciar_hilo_rec_servidor(self):
-        self.hilo_servidor_man = QThread()
+        self.hilo_servidor = QThread()
         self.conexion_s = Conexion_serv(self.jugador)
-        self.conexion_s.moveToThread(self.hilo_servidor_man)
-        self.hilo_servidor_man.started.connect(self.conexion_s.iniciar_servidor)
+        self.conexion_s.moveToThread(self.hilo_servidor)
+        self.hilo_servidor.started.connect(self.conexion_s.iniciar_servidor)
         self.conexion_s.cliente_conectado.connect(self.cambiar_lbl)
         self.conexion_s.mensaje.connect(self.escucha_serv)
         self.conexion_s.error.connect(self.error)
-        self.hilo_servidor_man.start()
+        self.hilo_servidor.start()
 
     def verificacion_serv(self, jugador, texto, rol):
         if not jugador:
@@ -791,9 +828,12 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "Aun no se conecta el rival", "Espera a que tu contrincante se una a la partida para iniciar")
             return
         self.jugador = jugador
+        self.mand_msg_serv(f"NOMBRE:{self.jugador}")
         self.iniciar_juego(jugador, self.nombre_contrario , rol)
         self.dlg_serv.accept()
 
+    def recibir_mensaje_servidor(self, msg):
+        self.juego.recibir(msg)
 
     def escucha_serv(self, msg):
         if msg[:8] == "CONEXION":
@@ -801,20 +841,8 @@ class MainWindow(QMainWindow):
             return
         self.juego.recibir(msg)
 
-    def escucha_cliente(self, msg):
-        if msg[:8] == "CONEXION":
-            self.nombre_contrario = msg[9:]
-            return
-        self.juego.recibir(msg)
-
     def mand_msg_serv(self, msg):
         self.conexion_s.mandar_servidor(msg)
-
-    def mand_msg_clien(self, msg):
-        self.conexion_c.cliente_man(msg)
-
-    def cambiar_lbl(self, mensaje):
-        self.lbl_cliente.setText(mensaje)
 
     def abrir_fachada_cliente(self):
         self.dlg_cliente = QDialog(self)
@@ -852,15 +880,64 @@ class MainWindow(QMainWindow):
         self.btn.setDisabled(True)
         self.iniciar_hilo_rec_cliente(nombre, ip)
 
+    def recibir_mensaje_cliente(self, msg):
+        self.juego.recibir(msg)
+
+    def escucha_cliente(self, msg):
+        if msg[:6] == "NOMBRE":
+            self.nombre_contrario = msg[7:]
+            return
+        self.juego.recibir(msg)
+
+    def mand_msg_clien(self, msg):
+        self.conexion_c.cliente_man(msg)
+
+    def cambiar_lbl(self, mensaje):
+        self.lbl_cliente.setText(mensaje)
+
     def iniciar_inicio(self):
         self.dlg_cliente.accept()
         self.iniciar_juego(self.jugador, self.nombre_contrario, "CLIENTE")
 
-    def error(self, error):
-        print("hubo un error", error)
+    def error(self, error_msg):
+        # Usar QTimer.singleShot para asegurar que se ejecute en el hilo principal
+        QTimer.singleShot(0, lambda: self._manejar_error_ui(error_msg))
+
+    def _manejar_error_ui(self, error_msg):
+        QMessageBox.warning(self, "Error de conexión",
+                            f"El otro jugador se ha desconectado o hubo un error.\n\nError: {error_msg}")
+        self.cerrar_todo()
+        self.volver_menu()
+
+    def cerrar_todo(self):
+        if self.conexion_s:
+            self.conexion_s.socket_servidor.close()
+        if self.conexion_c:
+            self.conexion_c.socket_cliente.close()
+        if self.hilo_servidor:
+            try:
+                self.conexion_s.mandar_servidor("DESCONEXION")
+            except:
+                pass
+            self.hilo_servidor.quit()
+            self.hilo_servidor.wait()
+        if self.hilo_cliente:
+            try:
+                self.conexion_c.cliente_man("DESCONEXION")
+            except:
+                pass
+            self.hilo_cliente.quit()
+            self.hilo_cliente.wait()
+        if self.juego:
+            self.juego.cerrar_todo()
+            self.juego.deleteLater()
+            self.juego = None
+
+    def closeEvent(self, event):
+        self.cerrar_todo()
 
 
-app = QApplication(sys.argv)
+app = QApplication()
 win = MainWindow()
 win.show()
-sys.exit(app.exec())
+app.exec()
