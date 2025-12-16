@@ -95,19 +95,42 @@ class MenuWidget(QWidget):
         dlg.exec()
 
     def abrir_records(self):
-         dlg = QDialog(self)
-         dlg.setWindowTitle("RECORDS - PIXEL KONG")
-         dlg.setFixedSize(480,420)
-         v = QVBoxLayout(dlg)
-         lista = QListWidget()
-         regs = cargar_records()
-         if not regs:
-            lista.addItem("Aún no hay records.")
-         else:
-             regs_sorted = sorted(regs, key=lambda r: r.get("puntos",0), reverse=True)
-             for r in regs_sorted[:100]:
-                 lista.addItem(f"{r.get('nombre','?')} - {r.get('puntos',0)} pts - Nivel {r.get('nivel',1)}")
-         v.addWidget(lista)
-         btn = QPushButton("Cerrar"); btn.clicked.connect(dlg.accept); v.addWidget(btn)
-         dlg.exec()
+        from Funciones import cargar_records
 
+        dlg = QDialog(self)
+        dlg.setWindowTitle("RECORDS - PIXEL KONG")
+        dlg.setFixedSize(480, 420)
+
+        layout = QVBoxLayout(dlg)
+
+        # Lista para mostrar records
+        lista = QListWidget()
+
+        # Cargar records desde la base de datos
+        regs = cargar_records()
+
+        if not regs:
+            lista.addItem("Aún no hay records.")
+        else:
+            # Mostrar cada record
+            for r in regs:
+                nombre = r.get('nombre', '?')
+                puntos = r.get('puntos', 0)
+                nivel = r.get('nivel', 1)
+                fecha = r.get('fecha', '')
+
+                # Formato simple
+                texto = f"{nombre} - {puntos} pts - Nivel {nivel}"
+                if fecha:
+                    texto += f" - {fecha}"
+
+                lista.addItem(texto)
+
+        layout.addWidget(lista)
+
+        # Botón para cerrar
+        btn_cerrar = QPushButton("Cerrar")
+        btn_cerrar.clicked.connect(dlg.accept)
+        layout.addWidget(btn_cerrar)
+
+        dlg.exec()

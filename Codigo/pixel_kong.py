@@ -269,18 +269,30 @@ class JuegoWidget_servidor(QWidget):
             self.mensaje.emit("ganador")
             self.subir_nivel(self.nombre)
 
+
     def perder_vida(self, jugador):
+        from Funciones import guardar_record
+
         if jugador == self.nombre:
             self.vidas -= 1
             if self.vidas <= 0:
-                QMessageBox.information(self, "Game Over", f"{self.nombre} perdió todas las vidas!")
+                # Guardamos QUIÉN GANÓ (cliente) y QUIÉN PERDIÓ (servidor)
+                guardar_record(self.rival, self.puntos_j2, self.nivel)  # Ganador
+                guardar_record(self.nombre, self.puntos, self.nivel)  # Perdedor
+
+                QMessageBox.information(self, "Game Over",
+                                        f"{self.nombre} perdió! {self.rival} gana!")
                 self.app_window.volver_menu()
             else:
                 self.jx, self.jy = 80, 550
         else:
-            QMessageBox.information(self, "Game Over", f"{self.rival} perdió todas las vidas!")
-            self.app_window.volver_menu()
+            # El cliente pierde
+            guardar_record(self.nombre, self.puntos, self.nivel)  # Ganador (servidor)
+            guardar_record(self.rival, self.puntos_j2, self.nivel)  # Perdedor (cliente)
 
+            QMessageBox.information(self, "Game Over",
+                                    f"{self.rival} perdió! {self.nombre} gana!")
+            self.app_window.volver_menu()
     def aplicar_powerup(self, tipo):
         self.puntos += 500
         if tipo == "inmune":
@@ -597,16 +609,30 @@ class JuegoWidget_cliente(QWidget):
             self.subir_nivel(self.nombre)
 
     def perder_vida(self, jugador):
+        # Importamos la función para guardar
+        from Funciones import guardar_record
+
         if jugador == self.nombre:
             self.vidas -= 1
             if self.vidas <= 0:
-                QMessageBox.information(self, "Game Over", f"{self.nombre} perdió todas las vidas!")
+                # Cliente pierde
+                guardar_record(self.rival, self.puntos_j2, self.nivel)  # Ganador (servidor)
+                guardar_record(self.nombre, self.puntos, self.nivel)  # Perdedor (cliente)
+
+                QMessageBox.information(self, "Game Over",
+                                        f"{self.nombre} perdió! {self.rival} gana!")
                 self.app_window.volver_menu()
             else:
                 self.jx, self.jy = 80, 550
         else:
-            QMessageBox.information(self, "Game Over", f"{self.rival} perdió todas las vidas!")
+            # Servidor pierde
+            guardar_record(self.nombre, self.puntos, self.nivel)  # Ganador (cliente)
+            guardar_record(self.rival, self.puntos_j2, self.nivel)  # Perdedor (servidor)
+
+            QMessageBox.information(self, "Game Over",
+                                    f"{self.rival} perdió! {self.nombre} gana!")
             self.app_window.volver_menu()
+
 
     def aplicar_powerup(self, tipo):
         self.puntos += 500
